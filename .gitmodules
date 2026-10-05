@@ -1,0 +1,7 @@
+[submodule "core"]
+	path = core
+	url = https://github.com/edo9300/ygopro-core.git
+[submodule "lua"]
+	path = lua
+	url = https://github.com/lua/lua.git
+	branch = v5.3

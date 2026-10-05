@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+IMAGE="emscripten/emsdk:$(tr -d '[:space:]' < emsdk.version)"
+exec docker run --rm -v "$PWD:/src" -w /src -e CHOWN_TO="$(id -u):$(id -g)" "$IMAGE" ./build.sh

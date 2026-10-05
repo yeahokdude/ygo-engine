@@ -1,0 +1,24 @@
+{
+	"name": "ygo-engine",
+	"private": true,
+	"type": "module",
+	"license": "AGPL-3.0-or-later",
+	"engines": {
+		"node": ">=22"
+	},
+	"main": "./driver/index.mjs",
+	"exports": {
+		".": "./driver/index.mjs",
+		"./host": "./host/session.mjs",
+		"./browser": "./dist/browser/ocgcore.mjs",
+		"./workerd": "./dist/workerd/index.mjs"
+	},
+	"scripts": {
+		"build": "./build",
+		"constants": "node tools/constants.mjs",
+		"test": "node test/smoke.mjs && node test/driver.mjs && node test/redact.mjs && node test/session.mjs && node test/translate.mjs && node test/prompts.mjs && workerd test test/workerd/config.capnp"
+	},
+	"devDependencies": {
+		"workerd": "1.20260710.1"
+	}
+}

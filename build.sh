@@ -39,6 +39,10 @@ build() {
 rm -rf dist
 build browser web,worker
 build workerd web
+mkdir -p dist/browser/driver dist/browser/host
+cp driver/*.mjs dist/browser/driver/
+cp host/session.mjs host/artifact.mjs dist/browser/host/
+cp host/browser/*.mjs dist/browser/
 cp host/workerd/*.mjs dist/workerd/
 
 EMSCRIPTEN=$(emcc --version | head -n1 | sed -E 's/.* ([0-9]+\.[0-9]+\.[0-9]+) .*/\1/')
@@ -46,13 +50,14 @@ CORE=$(git -c safe.directory='*' -C core rev-parse HEAD)
 LUA=$(git -c safe.directory='*' -C lua rev-parse HEAD)
 node - "$EMSCRIPTEN" "$CORE" "$LUA" <<'JS'
 const { createHash } = require('node:crypto');
-const { readFileSync, readdirSync, writeFileSync } = require('node:fs');
+const { readFileSync, readdirSync, statSync, writeFileSync } = require('node:fs');
 const [emscripten, core, lua] = process.argv.slice(2);
 const file = (path) => {
 	const bytes = readFileSync(path);
 	return { sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length };
 };
-const target = (name) => Object.fromEntries(readdirSync(`dist/${name}`).sort().map((f) => [f, file(`dist/${name}/${f}`)]));
+const files = (dir) => readdirSync(dir, { recursive: true }).filter((f) => statSync(`${dir}/${f}`).isFile()).sort();
+const target = (name) => Object.fromEntries(files(`dist/${name}`).map((f) => [f, file(`dist/${name}/${f}`)]));
 const manifest = { emscripten, core, lua, targets: { browser: target('browser'), workerd: target('workerd') } };
 writeFileSync('dist/manifest.json', JSON.stringify(manifest, null, '\t') + '\n');
 console.log(JSON.stringify(manifest, null, 2));

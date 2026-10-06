@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { MessageChannel } from 'node:worker_threads';
 
-import { DUEL, DUEL_STATUS, LOCATION, MSG, QUERY, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, replyFor, vocabulary } from '../driver/index.mjs';
+import { DUEL_STATUS, LOCATION, MSG, QUERY, clockFromSeed, createTranslator, redact, vocabulary } from '../driver/index.mjs';
 import { PROTOCOL, createSession } from '../host/session.mjs';
-import { DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
+import { DECKS, SEED, TEAM, browserEntry, cardReader, directDuel, stringify } from './vanilla.mjs';
 
 const { SHAPE, TAG, VERB } = vocabulary;
 const browser = await browserEntry();
@@ -18,36 +18,7 @@ const until = async (frames, test) => {
 };
 const filtered = (messages, seats) => messages.map((message) => redact(message, seats)).filter((message) => message !== null);
 
-const direct = await (async () => {
-	const engine = await createEngine(browser, { log: () => {} });
-	const duel = engine.createDuel({ seed: SEED, flags: DUEL.MODE_MR5, team1: TEAM, team2: TEAM, cardReader, scriptReader: () => null, clock: clockFromSeed(SEED) });
-	const orders = loadDecks(duel, DECKS, { seed: SEED });
-	duel.start();
-	const translator = createTranslator({ seats: [0, 1], startingLP: STARTING_LP });
-	translator.open(orders);
-	const batches = [];
-	const replies = [];
-	const fields = [];
-	const result = play(
-		duel,
-		(prompt) => {
-			fields.push(pollField(duel));
-			const answer = bot(prompt);
-			replies.push(replyFor(translator.prompt(redact(prompt, [0, 1])), answer));
-			return answer;
-		},
-		{
-			onBatch: (batch) => {
-				translator.translate(filtered(batch.messages, [0, 1]));
-				batches.push(batch);
-			},
-		},
-	);
-	assert.equal(result.reason, 'win');
-	fields.push(pollField(duel));
-	duel.destroy();
-	return { orders, batches, replies, fields, decisions: result.decisions };
-})();
+const direct = await directDuel(browser);
 
 function viewOf(seats) {
 	const translator = createTranslator({ seats, startingLP: STARTING_LP });

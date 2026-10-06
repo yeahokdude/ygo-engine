@@ -35,19 +35,21 @@ function version(engine) {
 	console.log('workerd  ok  version', version(engine).join('.'));
 }
 
-for (const target of ['browser', 'workerd']) {
-	const glue = await readFile(new URL(`${target}/ocgcore.mjs`, DIST), 'utf8');
-	for (const pattern of FORBIDDEN) assert.doesNotMatch(glue, pattern, `${target}/ocgcore.mjs contains ${pattern}`);
-}
-
 {
 	const manifest = JSON.parse(await readFile(new URL('manifest.json', DIST), 'utf8'));
+	let modules = 0;
 	for (const [target, files] of Object.entries(manifest.targets)) {
 		for (const [name, { sha256, bytes }] of Object.entries(files)) {
 			const data = await readFile(new URL(`${target}/${name}`, DIST));
 			assert.equal(data.length, bytes, `${target}/${name}: bytes`);
 			assert.equal(createHash('sha256').update(data).digest('hex'), sha256, `${target}/${name}: sha256`);
+			if (!name.endsWith('.mjs')) continue;
+			for (const pattern of FORBIDDEN) assert.doesNotMatch(data.toString('utf8'), pattern, `${target}/${name} contains ${pattern}`);
+			modules++;
 		}
 	}
-	console.log('manifest ok  emscripten', manifest.emscripten, 'core', manifest.core.slice(0, 12), 'lua', manifest.lua.slice(0, 12));
+	for (const name of ['worker.mjs', 'ocgcore.mjs', 'ocgcore.wasm', 'host/session.mjs', 'host/artifact.mjs', 'driver/index.mjs']) {
+		assert.ok(name in manifest.targets.browser, `the browser target carries ${name}`);
+	}
+	console.log('manifest ok  emscripten', manifest.emscripten, 'core', manifest.core.slice(0, 12), 'lua', manifest.lua.slice(0, 12), `· ${modules} modules scanned`);
 }

@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const HEADER = new URL('../core/ocgapi_constants.h', import.meta.url);
 const TYPES = new URL('../core/ocgapi_types.h', import.meta.url);
+const COMMON = new URL('../core/common.h', import.meta.url);
 const OUTPUT = new URL('../driver/constants.mjs', import.meta.url);
 
 const ENUMS = [
@@ -31,15 +32,18 @@ const GROUPS = [
 	['DUEL_', 'DUEL'],
 ];
 
-export function generate(headerText, typesText) {
-	const values = new Map();
-	for (const line of headerText.split('\n')) {
-		const match = /^#define\s+([A-Z_0-9]+)\s+(.+?)\s*(?:\/\*.*)?$/.exec(line);
-		if (!match) continue;
-		const [, name, expression] = match;
-		if (name.startsWith('OCG_') || name.startsWith('OCGAPI_')) continue;
-		values.set(name, evaluate(expression, values));
+function define(text, values, keep) {
+	for (const line of text.split('\n')) {
+		const match = /^#define\s+([A-Z_0-9]+)\s+(.+?)\s*(?:\/\*.*|\/\/.*)?$/.exec(line);
+		if (!match || !keep(match[1])) continue;
+		values.set(match[1], evaluate(match[2], values));
 	}
+}
+
+export function generate(headerText, typesText, commonText) {
+	const values = new Map();
+	define(headerText, values, (name) => !name.startsWith('OCG_') && !name.startsWith('OCGAPI_'));
+	define(commonText, values, (name) => name.startsWith('LOCATION_'));
 
 	const sections = GROUPS.map(([prefix, exported]) => {
 		const members = [...values].filter(([name]) => name.startsWith(prefix));
@@ -118,7 +122,7 @@ function evaluate(expression, values) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-	const generated = generate(readFileSync(HEADER, 'utf8'), readFileSync(TYPES, 'utf8'));
+	const generated = generate(readFileSync(HEADER, 'utf8'), readFileSync(TYPES, 'utf8'), readFileSync(COMMON, 'utf8'));
 	if (process.argv.includes('--check')) {
 		let current = '';
 		try {

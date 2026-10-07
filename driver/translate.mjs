@@ -96,6 +96,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000] }) {
 	let phase = 0;
 	let opened = false;
 	let hint = null;
+	let consumed = null;
 	const written = new Map();
 
 	const fail = (what) => {
@@ -234,7 +235,9 @@ export function createTranslator({ seats, startingLP = [8000, 8000] }) {
 				const inst = mint(m.code, to.position);
 				place(inst, to);
 				const zone = zoneAt(to);
-				rows.push({ t: TAG.CREATE, actor: to.controller, cards: [m.code], to: zoneRef(zone), flags: landing(zone, to.position), verb: VERB.create, reason: m.reason });
+				let flags = landing(zone, to.position);
+				if (to.location === LOCATION.DECK && to.sequence === 0) flags |= FLAG.AT_BOTTOM;
+				rows.push({ t: TAG.CREATE, actor: to.controller, cards: [m.code], to: zoneRef(zone), flags, verb: VERB.create, reason: m.reason });
 				return;
 			}
 			const inst = at(from);
@@ -488,7 +491,12 @@ export function createTranslator({ seats, startingLP = [8000, 8000] }) {
 			if (!opened) fail('not open');
 			const hinted = hint;
 			hint = null;
+			consumed = hinted;
 			return translatePrompt(message, { handle: at, zone: zoneOf }, hinted);
+		},
+
+		again() {
+			hint = consumed;
 		},
 
 		stats(field) {

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { MessageChannel } from 'node:worker_threads';
 
-import { DUEL_STATUS, LOCATION, MSG, QUERY, clockFromSeed, createTranslator, redact, vocabulary } from '../driver/index.mjs';
+import { ATTRIBUTE, DUEL_STATUS, LOCATION, MSG, QUERY, RACE, TYPE, clockFromSeed, createTranslator, redact, vocabulary } from '../driver/index.mjs';
 import { PROTOCOL, createSession } from '../host/session.mjs';
 import { DECKS, SEED, TEAM, browserEntry, cardReader, directDuel, stringify } from './vanilla.mjs';
 
-const { SHAPE, TAG, VERB } = vocabulary;
+const { EMZ, FLAG, OUTCOME, PACK_PHASE, SHAPE, TAG, VERB, ZONE, seatZone, zoneRef } = vocabulary;
 const browser = await browserEntry();
 const STARTING_LP = [TEAM.startingLP, TEAM.startingLP];
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -241,4 +241,136 @@ const rowsOf = (steps) => steps.flatMap((step) => step.rows);
 	assert.equal(seat0.frames.filter((frame) => frame.type === 'end').length, 1);
 	for (const one of [seat0, seat1, gallery]) one.close();
 	console.log('refusals  ok');
+}
+
+const FUSION = 90;
+const fusionReader = (code) =>
+	code === FUSION ? { code, alias: 0, setcodes: [], type: TYPE.MONSTER | TYPE.FUSION, level: 6, attribute: ATTRIBUTE.DARK, race: RACE.FIEND, attack: 2400, defense: 2000 } : cardReader(code);
+
+function passOn(prompt) {
+	if (prompt.members.length === 0) return { shape: SHAPE.TERMINAL, outcome: OUTCOME.EMPTY };
+	if (prompt.family === 'chain') return { shape: SHAPE.TERMINAL, outcome: OUTCOME.DECLINE };
+	const ending = prompt.members.findIndex((member) => member.verb === VERB.phase && member.description === PACK_PHASE.EP);
+	if (ending !== -1) return { shape: SHAPE.ONE_OF, member: ending };
+	if (prompt.shape === SHAPE.SUBSET) return { shape: SHAPE.SUBSET, members: Array.from({ length: prompt.min }, (_, index) => index) };
+	return { shape: SHAPE.ONE_OF, member: 0 };
+}
+
+async function conjured(script) {
+	const session = createSession({ instantiate: browser, cardReader: fusionReader, scriptReader: () => null });
+	const solo = client(session, [0, 1], { answers: false });
+	const settled = async (count) => {
+		await until(solo.frames, () => solo.steps.length >= count || solo.frames.some((frame) => frame.type === 'end'));
+		return solo.steps.at(-1);
+	};
+	solo.send(OPEN);
+	await script(solo, settled);
+	const field = session.query({ location: { controller: 0, location: LOCATION.MZONE, flags: QUERY.CODE | QUERY.POSITION } }, [0, 1]);
+	session.close();
+	solo.close();
+	return { frames: solo.frames, steps: solo.steps, field };
+}
+
+{
+	const HAND = seatZone(0, ZONE.HAND);
+	const play = async (solo, settled) => {
+		const first = await settled(1);
+		assert.equal(first.prompt.family, 'idle', 'the duel opens on the first idle command');
+		solo.send({ type: 'create', seat: 0, code: 41, zone: HAND, flags: 0 });
+		const made = await settled(2);
+		assert.deepEqual(made.rows[0], { t: TAG.CREATE, actor: 0, cards: [41], to: zoneRef(HAND), flags: 0, verb: VERB.create, reason: 0 }, 'the card is made as a row');
+		assert.equal(made.prompt.family, 'idle', 'the waiting prompt is asked again');
+		const summons = (prompt) => prompt.members.filter((member) => member.verb === VERB.normalSummon);
+		const fresh = summons(made.prompt).find((member) => !summons(first.prompt).some((old) => old.subject.inst === member.subject.inst));
+		assert.ok(fresh !== undefined && fresh.code === 41, 'and offers the card made at once');
+		solo.send({ type: 'answer', kind: made.prompt.kind, reply: { shape: SHAPE.ONE_OF, member: made.prompt.members.indexOf(fresh) } });
+		for (let count = 3; ; count++) {
+			const step = await settled(count);
+			const moved = step.rows.find((row) => row.t === TAG.MOVE && row.insts?.[0] === fresh.subject.inst);
+			if (moved !== undefined) {
+				assert.equal(moved.verb, VERB.normalSummon, 'the card made is Normal Summoned');
+				return;
+			}
+			solo.send({ type: 'answer', kind: step.prompt.kind, reply: passOn(step.prompt) });
+		}
+	};
+	const live = await conjured(play);
+	const again = await conjured(play);
+	assert.equal(stringify(again.steps), stringify(live.steps), 'a card made is made the same way every time');
+	assert.ok(live.field.some((card) => card?.code === 41), 'the core holds the card made where the rows say');
+
+	const DECK = seatZone(1, ZONE.DECK);
+	const drawn = await conjured(async (solo, settled) => {
+		await settled(1);
+		solo.send({ type: 'create', seat: 1, code: 7, zone: DECK, flags: 0 });
+		let step = await settled(2);
+		assert.equal(step.rows[0].t, TAG.CREATE);
+		for (let count = 3; count < 40; count++) {
+			solo.send({ type: 'answer', kind: step.prompt.kind, reply: passOn(step.prompt) });
+			step = await settled(count);
+			const draw = step.rows.find((row) => row.t === TAG.MOVE && row.verb === VERB.draw && row.actor === 1);
+			if (draw !== undefined) {
+				assert.deepEqual(draw.cards, [7], 'a card made on top of a Deck is its next draw');
+				return;
+			}
+		}
+		assert.fail('seat 1 never drew');
+	});
+	assert.ok(drawn.steps.length > 2);
+
+	const bottom = await conjured(async (solo, settled) => {
+		await settled(1);
+		solo.send({ type: 'create', seat: 0, code: 9, zone: seatZone(0, ZONE.DECK), flags: FLAG.AT_BOTTOM });
+		const made = await settled(2);
+		assert.equal(made.rows[0].flags, FLAG.AT_BOTTOM, 'a card made under a Deck says so');
+		solo.send({ type: 'create', seat: 0, code: FUSION, zone: seatZone(0, ZONE.EXTRA), flags: FLAG.FACE_PRESENT });
+		const extra = await settled(3);
+		assert.deepEqual(extra.rows[0], { t: TAG.CREATE, actor: 0, cards: [FUSION], to: zoneRef(seatZone(0, ZONE.EXTRA)), flags: FLAG.FACE_PRESENT, verb: VERB.create, reason: 0 });
+		solo.send({ type: 'create', seat: 1, code: 12, zone: EMZ[0], flags: FLAG.FACE_PRESENT | FLAG.FACE_UP | FLAG.POSITION_PRESENT });
+		const shared = await settled(4);
+		assert.equal(shared.rows[0].to, zoneRef(EMZ[0]), 'a shared zone is made in from the seat that makes it');
+		assert.equal(shared.rows[0].actor, 1);
+	});
+	assert.ok(bottom.steps.every((step) => step.prompt?.family === 'idle'));
+
+	const refused = await conjured(async (solo, settled) => {
+		const first = await settled(1);
+		const reasons = [];
+		for (const frame of [
+			{ type: 'create', seat: 2, code: 41, zone: HAND, flags: 0 },
+			{ type: 'create', seat: 0, code: 999, zone: HAND, flags: 0 },
+			{ type: 'create', seat: 0, code: 41, zone: 99, flags: 0 },
+			{ type: 'create', seat: 0, code: FUSION, zone: HAND, flags: 0 },
+			{ type: 'create', seat: 0, code: 41, zone: seatZone(0, ZONE.EXTRA), flags: FLAG.FACE_PRESENT },
+			{ type: 'create', seat: 0, code: 41, zone: seatZone(0, ZONE.MZ[2]), flags: 'up' },
+		]) {
+			solo.send(frame);
+			await until(solo.frames, () => solo.frames.filter((one) => one.type === 'error').length > reasons.length);
+			reasons.push(solo.frames.filter((one) => one.type === 'error').at(-1));
+		}
+		assert.ok(reasons.every((error) => error.refused === 'create'));
+		assert.deepEqual(
+			reasons.map((error) => error.message.split(' ').slice(0, 2).join(' ')),
+			['seat: 0', 'no card', 'no zone', 'an Extra', 'the Extra', 'flags: the'],
+		);
+		solo.send({ type: 'create', seat: 0, code: 41, zone: seatZone(0, ZONE.MZ[2]), flags: FLAG.FACE_PRESENT | FLAG.FACE_UP | FLAG.POSITION_PRESENT });
+		await settled(2);
+		solo.send({ type: 'create', seat: 0, code: 42, zone: seatZone(0, ZONE.MZ[2]), flags: FLAG.FACE_PRESENT | FLAG.FACE_UP | FLAG.POSITION_PRESENT });
+		await until(solo.frames, () => solo.frames.filter((one) => one.type === 'error').length > reasons.length);
+		assert.match(solo.frames.filter((one) => one.type === 'error').at(-1).message, /is not free/);
+		assert.equal(solo.steps.length, 2, 'a refused card makes nothing and asks nothing again');
+		assert.equal(first.prompt.family, 'idle');
+	});
+	assert.ok(refused.field.some((card) => card?.code === 41));
+
+	const session = createSession({ instantiate: browser, cardReader, scriptReader: () => null });
+	const seat0 = client(session, [0], { answers: false });
+	await session.open({ ...OPEN, seed: SEED });
+	await until(seat0.frames, (frame) => frame.type === 'step');
+	seat0.send({ type: 'create', seat: 0, code: 41, zone: HAND, flags: 0 });
+	await until(seat0.frames, (frame) => frame.type === 'error');
+	assert.match(seat0.frames.find((frame) => frame.type === 'error').message, /both seats may make a card/);
+	session.close();
+	seat0.close();
+	console.log(`conjure   ok  ${live.steps.length} steps to a Normal Summon of a card made`);
 }

@@ -8,6 +8,13 @@ export const LOCATION = Object.freeze({
 	EXTRA: 64,
 	OVERLAY: 128,
 	ONFIELD: 12,
+	FZONE: 0x100,
+	PZONE: 0x200,
+	STZONE: 0x400,
+	MMZONE: 0x800,
+	EMZONE: 0x1000,
+	DECKBOT: 0x10001,
+	DECKSHF: 0x20001,
 });
 
 export const POS = Object.freeze({

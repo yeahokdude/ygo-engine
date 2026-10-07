@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
-import { DUEL, LOCATION, MSG, PHASE, POS, STATUS, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
+import { ATTRIBUTE, DUEL, DUEL_STATUS, LOCATION, MSG, PHASE, POS, QUERY, RACE, STATUS, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
+import { conjure, conjureError, placeOf } from '../driver/conjure.mjs';
 import { unruledKinds } from '../driver/translate.mjs';
 import { DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
 
@@ -18,7 +19,85 @@ assert.deepEqual(unruledKinds(), []);
 	assert.equal(zoneOf(0, LOCATION.MZONE, 6), zoneOf(1, LOCATION.MZONE, 5));
 	assert.throws(() => zoneOf(0, LOCATION.SZONE, 6), /no zone/);
 	assert.throws(() => zoneOf(0, LOCATION.OVERLAY, 0), /no zone/);
+	for (const seat of [0, 1]) {
+		for (let zone = 1; zone <= 32; zone++) {
+			const { controller, location, sequence } = placeOf(zone, seat);
+			assert.equal(zoneOf(controller, location, sequence), zone, `zone ${zone} is the place it names`);
+		}
+		for (const zone of EMZ) assert.equal(zoneOf(seat, LOCATION.MZONE, placeOf(zone, seat).sequence), zone, 'a shared zone, from either seat');
+	}
+	assert.equal(placeOf(0, 0), null);
+	assert.equal(placeOf(33, 0), null);
 	console.log('zones      ok');
+}
+
+{
+	const made = (code, type, extra = {}) => [code, { code, alias: 0, setcodes: [], type, level: 4, attribute: ATTRIBUTE.LIGHT, race: RACE.SPELLCASTER, attack: 1500, defense: 1200, ...extra }];
+	const MADE = new Map([
+		made(90, TYPE.MONSTER | TYPE.FUSION),
+		made(91, TYPE.MONSTER | TYPE.NORMAL | TYPE.PENDULUM, { lscale: 2, rscale: 2 }),
+		made(92, TYPE.SPELL),
+		made(93, TYPE.SPELL | TYPE.FIELD),
+	]);
+	const reader = (code) => MADE.get(code) ?? cardReader(code);
+	const engine = await createEngine(browser, { log: () => {} });
+	const duel = engine.createDuel({ seed: SEED, flags: DUEL.MODE_MR5, team1: TEAM, team2: TEAM, cardReader: reader, scriptReader: () => null, clock: clockFromSeed(SEED) });
+	const orders = loadDecks(duel, DECKS, { seed: SEED });
+	duel.start();
+	const translator = createTranslator({ seats: [0, 1] });
+	translator.open(orders);
+	for (;;) {
+		const batch = advance(duel);
+		translator.translate(batch.messages);
+		if (batch.status === DUEL_STATUS.AWAITING) break;
+	}
+	const UP = FLAG.FACE_PRESENT | FLAG.FACE_UP;
+	const DOWN = FLAG.FACE_PRESENT;
+	const AT = FLAG.POSITION_PRESENT;
+	const landings = [
+		[0, 11, ZONE.HAND, 0],
+		[1, 12, ZONE.HAND, 0],
+		[0, 13, ZONE.DECK, 0],
+		[0, 14, ZONE.DECK, FLAG.AT_BOTTOM],
+		[1, 15, ZONE.GY, 0],
+		[1, 16, ZONE.BANISH, UP],
+		[0, 17, ZONE.BANISH, DOWN],
+		[0, 90, ZONE.EXTRA, DOWN],
+		[0, 91, ZONE.EXTRA, UP],
+		[0, 90, ZONE.EXTRA, DOWN],
+		[0, 18, ZONE.MZ[0], UP | AT],
+		[0, 19, ZONE.MZ[1], UP | AT | FLAG.POSITION_DEF],
+		[1, 20, ZONE.MZ[4], DOWN | AT | FLAG.POSITION_DEF],
+		[0, 92, ZONE.ST[2], UP],
+		[1, 92, ZONE.ST[1], DOWN],
+		[0, 93, ZONE.FIELD, UP],
+		[0, 91, ZONE.ST[0], UP],
+		[1, 21, null, UP | AT],
+	];
+	const rows = [];
+	for (const [seat, code, slot, flags] of landings) {
+		const zone = slot === null ? EMZ[1] : seatZone(seat, slot);
+		const table = { field: pollField(duel), disabled: 0, duelFlags: DUEL.MODE_MR5 };
+		assert.equal(conjureError({ seat, code, zone, flags }, reader(code), table), null, `card ${code} may be made in zone ${zone}`);
+		rows.push(...translator.translate([conjure(duel, { seat, code, zone, flags }, reader(code), DUEL.MODE_MR5)]));
+		assert.deepEqual(translator.audit(duel), [], `card ${code} made in zone ${zone} lands where its row says`);
+	}
+	assert.ok(rows.every((row) => row.t === TAG.CREATE && row.verb === VERB.create), 'every card made is a CREATE row');
+	assert.equal(rows[3].flags, FLAG.AT_BOTTOM, 'one made under a Deck says so');
+	assert.equal(duel.query({ controller: 0, location: LOCATION.PZONE, sequence: 0, flags: QUERY.CODE }).code, 91, 'a Pendulum made face-up in a pendulum zone is a scale');
+	assert.equal(duel.query({ controller: 1, location: LOCATION.PZONE, sequence: 0, flags: QUERY.CODE }), null);
+	assert.equal(duel.queryField().players[0].extraPendulum, 1, 'a Pendulum made face-up in the Extra Deck is one of its face-up cards');
+	const table = { field: pollField(duel), disabled: 0, duelFlags: DUEL.MODE_MR5 };
+	assert.match(conjureError({ seat: 0, code: 22, zone: seatZone(0, ZONE.MZ[0]), flags: UP | AT }, reader(22), table), /not free/, 'a zone a card holds');
+	assert.match(conjureError({ seat: 0, code: 22, zone: EMZ[1], flags: UP | AT }, reader(22), table), /not free/, "a shared zone the other seat holds, from this side");
+	assert.equal(conjureError({ seat: 0, code: 22, zone: EMZ[0], flags: UP | AT }, reader(22), table), null, "the other shared zone");
+	assert.match(conjureError({ seat: 0, code: 22, zone: seatZone(0, ZONE.MZ[3]), flags: UP | AT }, reader(22), { ...table, disabled: 1 << 3 }), /not free/, 'a zone a card locked');
+	assert.equal(conjureError({ seat: 1, code: 22, zone: seatZone(1, ZONE.MZ[3]), flags: UP | AT }, reader(22), { ...table, disabled: 1 << 3 }), null, "a lock is one seat's");
+	assert.match(conjureError({ seat: 0, code: 22, zone: seatZone(0, ZONE.EXTRA), flags: UP }, reader(22), table), /Extra Deck takes/, 'a face-up card that is no Pendulum');
+	assert.match(conjureError({ seat: 0, code: 91, zone: seatZone(0, ZONE.EXTRA), flags: DOWN }, reader(91), table), /Extra Deck takes/, 'a face-down card from the main deck');
+	assert.match(conjureError({ seat: 0, code: 90, zone: seatZone(0, ZONE.DECK), flags: 0 }, reader(90), table), /no hand and no main deck/);
+	duel.destroy();
+	console.log(`conjure    ok  ${landings.length} cards made, the shadow held to the core after each`);
 }
 
 const played = await (async () => {

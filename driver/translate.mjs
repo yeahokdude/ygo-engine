@@ -347,8 +347,11 @@ export function createTranslator({ seats, startingLP = [8000, 8000] }) {
 		[MSG.CONFIRM_CARDS]: (m, rows) => {
 			const insts = m.cards.map((card) => learnAt(card));
 			const first = m.cards[0];
-			const look = first !== undefined && (first.location & (LOCATION.DECK | LOCATION.EXTRA)) !== 0;
-			rows.push({ t: TAG.REVEAL, actor: m.player, insts, cards: insts.map(codeOf), to: audienceRef(look ? AUDIENCE.seat(m.player) : AUDIENCE.ALL), verb: VERB.reveal });
+			if (first !== undefined && (first.location & (LOCATION.DECK | LOCATION.EXTRA)) !== 0) {
+				rows.push({ t: TAG.REVEAL, actor: m.player, insts, cards: insts.map(codeOf), to: audienceRef(AUDIENCE.seat(m.player)), verb: VERB.reveal });
+				return;
+			}
+			for (const seat of new Set(m.cards.map((card) => card.controller))) rows.push(revealAll(seat, insts.filter((_, i) => m.cards[i].controller === seat)));
 		},
 
 		[MSG.CHAINING]: (m, rows) => {

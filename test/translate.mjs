@@ -295,14 +295,18 @@ const played = await (async () => {
 		]);
 		const looks = translator.translate([
 			{ kind: MSG.CONFIRM_CARDS, player: 1, cards: [{ code: 2, controller: 0, location: LOCATION.DECK, sequence: 1 }] },
-			{ kind: MSG.CONFIRM_CARDS, player: 1, cards: [{ code: 4, controller: 1, location: LOCATION.MZONE, sequence: 6 }] },
+			{ kind: MSG.CONFIRM_CARDS, player: 0, cards: [{ code: 4, controller: 1, location: LOCATION.MZONE, sequence: 6 }] },
+			{ kind: MSG.CONFIRM_CARDS, player: 1, cards: [{ code: 4, controller: 1, location: LOCATION.MZONE, sequence: 6 }, { code: 1, controller: 0, location: LOCATION.MZONE, sequence: 4 }] },
 			{ kind: MSG.CONFIRM_DECKTOP, player: 0, cards: [{ code: 2, controller: 0, location: LOCATION.DECK, sequence: 1 }] },
 		]);
-		assert.deepEqual(looks.map((row) => [row.to, row.verb, row.cards[0]]), [
-			[audienceRef(AUDIENCE.seat(1)), VERB.reveal, 2],
-			[audienceRef(AUDIENCE.ALL), VERB.reveal, 4],
-			[audienceRef(AUDIENCE.ALL), VERB.revealTop, 2],
-		]);
+		assert.deepEqual(looks.map((row) => [row.actor, row.to, row.verb, row.cards]), [
+			[1, audienceRef(AUDIENCE.seat(1)), VERB.reveal, [2]],
+			[1, audienceRef(AUDIENCE.ALL), VERB.reveal, [4]],
+			[1, audienceRef(AUDIENCE.ALL), VERB.reveal, [4]],
+			[0, audienceRef(AUDIENCE.ALL), VERB.reveal, [1]],
+			[0, audienceRef(AUDIENCE.ALL), VERB.revealTop, [2]],
+		], 'a look is its looker\'s, and a confirm anywhere else is revealed by each card\'s controller, not by the seat it is shown to');
+		assert.deepEqual(looks[3].insts, [H.top0]);
 		assert.equal(translator.board()[0].deck[1].code, 2, 'a look teaches the shadow the code');
 		const tosses = translator.translate([{ kind: MSG.TOSS_COIN, player: 0, results: [1, 0] }, { kind: MSG.TOSS_DICE, player: 1, results: [6] }, { kind: MSG.REMOVE_CARDS, cards: [at(1, LOCATION.MZONE, 6)] }]);
 		assert.deepEqual(tosses, [

@@ -374,3 +374,58 @@ async function conjured(script) {
 	seat0.close();
 	console.log(`conjure   ok  ${live.steps.length} steps to a Normal Summon of a card made`);
 }
+
+{
+	const NOBODY = { main: [], extra: [] };
+	const fight = (prompt) => {
+		if (prompt.members.length === 0 || prompt.family === 'chain') return passOn(prompt);
+		for (const wanted of [
+			(member) => member.verb === VERB.normalSummon,
+			(member) => member.verb === VERB.attack,
+			(member) => member.verb === VERB.phase && member.description === PACK_PHASE.BP,
+		]) {
+			const at = prompt.members.findIndex(wanted);
+			if (at !== -1) return { shape: SHAPE.ONE_OF, member: at };
+		}
+		return passOn(prompt);
+	};
+	const played = async (open, enough) => {
+		const session = createSession({ instantiate: browser, cardReader, scriptReader: () => null });
+		const solo = client(session, [0, 1], { answers: false });
+		solo.send({ ...OPEN, decks: [DECKS[0], NOBODY], ...open });
+		const lp = [TEAM.startingLP, TEAM.startingLP];
+		let ended = null;
+		let out = null;
+		for (let answered = 0; answered < 400; answered++) {
+			await until(solo.frames, (frame) => frame.type === 'end' || solo.steps.length > answered);
+			ended = solo.frames.find((frame) => frame.type === 'end') ?? null;
+			const step = solo.steps.at(-1);
+			for (const row of step.rows) if (row.t === TAG.LP) lp[row.actor] += row.nums[0];
+			if (lp[1] <= 0 && out === null) out = solo.steps.length;
+			if (step.prompt === null) ended = await solo.ended;
+			if (ended !== null || enough(solo.steps, out)) break;
+			solo.send({ type: 'answer', kind: step.prompt.kind, reply: fight(step.prompt) });
+		}
+		session.close();
+		solo.close();
+		return { steps: solo.steps, ended, lp, out };
+	};
+	const offersBattle = (step) => step.prompt.members.some((member) => member.verb === VERB.phase && member.description === PACK_PHASE.BP);
+
+	const lost = await played({}, () => false);
+	assert.equal(lost.ended?.reason, 'win', 'nobody across loses a duel as it opens');
+	assert.equal(lost.ended.win.player, 0);
+	assert.equal(lost.ended.decisions, 0);
+
+	const normal = await played({ decks: DECKS }, () => true);
+	assert.ok(!offersBattle(normal.steps[0]), "a duel's first turn may not attack");
+
+	const test = await played({ handTest: true }, (steps, out) => out !== null && steps.length - out >= 60);
+	assert.equal(test.ended, null, 'a hand test is never over');
+	assert.equal(test.steps[0].prompt.family, 'idle', 'it opens on the first idle command');
+	assert.ok(offersBattle(test.steps[0]), 'whose turn may attack');
+	assert.ok(rowsOf(test.steps).every((row) => row.t !== TAG.MOVE || row.verb !== VERB.draw || row.actor === 0), 'nobody across draws nothing');
+	assert.ok(test.lp[1] <= 0 && test.steps.length - test.out >= 60, 'and is attacked out of life points while the duel plays on');
+	assert.ok(test.steps.slice(test.out).some((step) => step.prompt?.player === 1), 'through the turn nobody across cannot draw for');
+	console.log(`hand test ok  ${test.steps.length} steps, nobody across at ${test.lp[1]} LP`);
+}

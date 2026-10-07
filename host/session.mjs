@@ -1,7 +1,7 @@
 import { DUEL, DUEL_STATUS, MSG, advance, clockFromSeed, createEngine, createTranslator, encodeResponse, loadDecks, pollField, redact, redactQuery, responseFor } from '../driver/index.mjs';
 import { conjure, conjureError } from '../driver/conjure.mjs';
 
-export const PROTOCOL = 4;
+export const PROTOCOL = 5;
 
 const TEAM = { startingLP: 8000, startingDrawCount: 5, drawCountPerTurn: 1 };
 
@@ -69,7 +69,7 @@ export function createSession({ instantiate, cardReader, scriptReader, prelude =
 				const batch = advance(duel);
 				messages.push(...batch.messages);
 				for (const message of batch.messages) if (message.kind === MSG.FIELD_DISABLED) disabled = message.mask;
-				if (batch.win) {
+				if (batch.win && !deal.handTest) {
 					outcome = { reason: 'win', win: { player: batch.win.player, reason: batch.win.reason } };
 					break;
 				}
@@ -125,8 +125,10 @@ export function createSession({ instantiate, cardReader, scriptReader, prelude =
 	const start = async (spec) => {
 		const seed = spec.seed.map((word) => BigInt(word));
 		const teams = [{ ...TEAM, ...spec.teams?.[0] }, { ...TEAM, ...spec.teams?.[1] }];
-		const flags = spec.flags === undefined ? DUEL.MODE_MR5 : BigInt(spec.flags);
-		deal = { duel: { seed, flags, team1: teams[0], team2: teams[1], cardReader, scriptReader, clock: clockFromSeed(seed) }, decks: spec.decks, shuffle: spec.shuffle !== false };
+		const handTest = spec.handTest === true;
+		const mode = spec.flags === undefined ? DUEL.MODE_MR5 : BigInt(spec.flags);
+		const flags = handTest ? mode | DUEL.ATTACK_FIRST_TURN : mode;
+		deal = { duel: { seed, flags, team1: teams[0], team2: teams[1], cardReader, scriptReader, clock: clockFromSeed(seed) }, decks: spec.decks, shuffle: spec.shuffle !== false, handTest };
 		const { fresh, made, orders } = await dealt();
 		engine = fresh;
 		duel = made;

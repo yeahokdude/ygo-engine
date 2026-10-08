@@ -30,6 +30,9 @@ const withheld = (message, seats) => assert.equal(redact(message, seats), null, 
 	withheld(select, SEAT_1);
 	const own = { ...select, cards: [select.cards[0]] };
 	passes(own, SEAT_0);
+	const named = { ...select, player: 1, cards: [61027400, 42377643].map((code) => ({ code, controller: 1, location: 0, sequence: 0, position: 0 })) };
+	passes(named, SEAT_1);
+	passes(named, BOTH);
 
 	const unselect = { kind: MSG.SELECT_UNSELECT_CARD, player: 1, finishable: true, cancelable: false, min: 1, max: 2, selectable: [{ code: 33, ...at(0, LOCATION.GRAVE) }], unselectable: [{ code: 44, ...at(1, LOCATION.GRAVE) }] };
 	const built = redact(unselect, SEAT_1);

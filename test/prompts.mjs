@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 
 import {
-	ATTRIBUTE, DUEL, HINT, LOCATION, MSG, MSG_NAME, OPCODE, POS, RACE,
-	clockFromSeed, createEngine, createTranslator, encodeResponse, isPrompt, loadDecks, memberKey, play, replyFor, responseFor, vocabulary, zoneOf,
+	ATTRIBUTE, DUEL, HINT, LOCATION, MSG, MSG_NAME, OPCODE, POS, RACE, TYPE,
+	advance, clockFromSeed, createEngine, createTranslator, encodeResponse, isPrompt, loadDecks, memberKey, play, replyFor, responseFor, vocabulary, zoneOf,
 } from '../driver/index.mjs';
 import { DECODED_KINDS } from '../driver/messages.mjs';
 import { translatePrompt } from '../driver/prompts.mjs';
-import { DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
+import { CARDS, DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
 
 const { OUTCOME, PACK_PHASE, REGION, SHAPE, VERB, ZONE, seatZone } = vocabulary;
 const browser = await browserEntry();
@@ -137,7 +137,13 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 		assert.throws(() => responseFor(prompt, { shape: SHAPE.TERMINAL, outcome: OUTCOME.EMPTY }), /offers 3/);
 		assert.throws(() => responseFor(prompt, { shape: SHAPE.TERMINAL, outcome: OUTCOME.FINISH }), /cannot be finished/);
 		assert.throws(() => responseFor({ ...prompt, cancelable: false }, { shape: SHAPE.TERMINAL, outcome: OUTCOME.CANCEL }), /cannot be walked away from/);
-		assert.throws(() => translate({ ...select, cards: [{ code: 1, controller: 0, location: 0, sequence: 0, position: 0 }] }), /name-list/);
+		const listed = [61027400, 42377643, 61027400];
+		const named = { kind: MSG.SELECT_CARD, player: 1, cancelable: false, min: 1, max: 1, cards: listed.map((code) => ({ code, controller: 1, location: 0, sequence: 0, position: 0 })) };
+		const { prompt: names, reply: picked } = roundTrip(named, [2]);
+		assert.deepEqual(picked, { shape: SHAPE.SUBSET, members: [2] });
+		assert.deepEqual([names.family, names.shape, names.min, names.max, names.cancelable], ['cards', SHAPE.SUBSET, 1, 1, false]);
+		assert.deepEqual(names.members, listed.map((code, index) => ({ subject: { kind: 'seat', seat: 1 }, verb: VERB.pick, description: index, payload: index, code })), 'a list at no place is one member per entry, on the seat, a code listed twice two');
+		assert.throws(() => translate({ ...select, cards: [...select.cards, { code: 1, controller: 0, location: 0, sequence: 0, position: 0 }] }), /no place/);
 	}
 	{
 		const build = { kind: MSG.SELECT_UNSELECT_CARD, player: 0, finishable: true, cancelable: false, min: 1, max: 3, selectable: [card(1, 0, LOCATION.HAND, 0), card(2, 0, LOCATION.HAND, 1)], unselectable: [card(3, 0, LOCATION.MZONE, 2)] };
@@ -281,4 +287,77 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 		assert.throws(() => createTranslator({ seats: [0] }).prompt({ kind: MSG.SELECT_YESNO, player: 0, description: 0n }), /not open/);
 	}
 	console.log('cases      ok');
+}
+
+{
+	const SPELL = 81;
+	const LISTED = [5, 84, 5, 999];
+	const rows = new Map(CARDS).set(SPELL, { code: SPELL, alias: 0, setcodes: [], type: TYPE.SPELL, level: 0, attribute: 0, race: 0, attack: 0, defense: 0 });
+	const script = `function c${SPELL}.initial_effect(c)
+	local e=Effect.CreateEffect(c)
+	e:SetType(0x10)
+	e:SetCode(1002)
+	e:SetTarget(function(e,tp,eg,ep,ev,re,r,rp,chk)
+		if chk==0 then return true end
+		local said={}
+		for _,one in ipairs({Duel.SelectCardsFromCodes(1-tp,BOUNDS[1],BOUNDS[2],BOUNDS[3],true,${LISTED.join(',')})}) do said[#said+1]=one[1]..':'..one[2] end
+		Debug.Message('picked '..table.concat(said,','))
+	end)
+	c:RegisterEffect(e)
+end`;
+	const said = [];
+	const engine = await createEngine(browser, { log: () => {} });
+	const scripts = new Map([[`c${SPELL}.lua`, script]]);
+	const duel = engine.createDuel({ seed: SEED, flags: DUEL.MODE_MR5, team1: TEAM, team2: TEAM, cardReader: (code) => rows.get(code) ?? null, scriptReader: (name) => scripts.get(name) ?? null, clock: clockFromSeed(SEED), log: ({ text }) => text.startsWith('picked') && said.push(text) });
+	loadDecks(duel, [{ main: [SPELL, ...DECKS[0].main.slice(1)], extra: [] }, DECKS[1]], { seed: SEED, shuffle: false });
+	duel.start();
+	const asked = () => {
+		for (;;) {
+			const step = advance(duel);
+			if (step.prompt !== null || step.retry) return step;
+		}
+	};
+	const opening = asked();
+	const idle = engine.snapshot();
+	const activation = opening.prompt.activatable.findIndex((effect) => effect.code === SPELL);
+	assert.notEqual(activation, -1, 'the spell in hand may be activated');
+	const cases = [
+		{ bounds: [1, 1, false], replies: [[0], [1], [2], [3]], refused: [[0, 1], []] },
+		{ bounds: [0, 2, false], replies: [[3, 0], [], [1]], refused: [[0, 1, 2]] },
+	];
+	let taken = 0;
+	for (const { bounds: [min, max, cancel], replies, refused } of cases) {
+		engine.restore(idle);
+		assert.ok(duel.loadScript('bounds.lua', `BOUNDS={${min},${max},${cancel}}`));
+		duel.respond(MSG.SELECT_IDLECMD, { action: 5, index: activation });
+		let step = asked();
+		while (step.prompt?.kind === MSG.SELECT_PLACE) {
+			const open = Array.from({ length: 5 }, (_, sequence) => sequence).find((sequence) => !((step.prompt.mask >>> (8 + sequence)) & 1));
+			duel.respond(MSG.SELECT_PLACE, [{ player: 0, location: LOCATION.SZONE, sequence: open }]);
+			step = asked();
+		}
+		assert.equal(step.prompt?.kind, MSG.SELECT_CARD, `${min}..${max} asks a card list`);
+		const prompt = translatePrompt(step.prompt, null);
+		assert.deepEqual([prompt.player, prompt.min, prompt.max, prompt.cancelable], [1, min, max, cancel || min === 0]);
+		assert.deepEqual(prompt.members.map((member) => [member.subject.seat, member.code]), LISTED.map((code) => [1, code]), 'the list as the script gave it, on the seat it asks');
+		const asking = engine.snapshot();
+		for (const members of replies) {
+			engine.restore(asking);
+			said.length = 0;
+			const reply = members.length === 0 ? { shape: SHAPE.TERMINAL, outcome: OUTCOME.CANCEL } : { shape: SHAPE.SUBSET, members };
+			const response = responseFor(prompt, reply);
+			assert.deepEqual(replyFor(prompt, response), reply);
+			duel.respond(MSG.SELECT_CARD, response);
+			assert.equal(asked().retry, false, `${stringify(reply)} is taken`);
+			assert.deepEqual(said, [`picked ${members.map((member) => `${LISTED[member]}:${member + 1}`).join(',')}`], `${stringify(reply)} picks the codes its members carry`);
+			taken++;
+		}
+		for (const members of refused) {
+			engine.restore(asking);
+			duel.respond(MSG.SELECT_CARD, members);
+			assert.equal(asked().retry, true, `${stringify(members)} is refused by the core`);
+		}
+	}
+	duel.destroy();
+	console.log(`names      ok  ${taken} answers taken of a list at no place, each the codes its members carry`);
 }

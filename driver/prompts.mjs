@@ -110,7 +110,7 @@ const RULES = {
 		min: m.min,
 		max: m.max,
 		cancelable: m.cancelable,
-		members: m.cards.map((card, index) => cardMember(resolve, card, VERB.pick, index)),
+		members: m.cards.length > 0 && m.cards.every(atNoPlace) ? m.cards.map((card, index) => namedMember(m.player, card, index)) : m.cards.map((card, index) => cardMember(resolve, card, VERB.pick, index)),
 	}),
 	[MSG.SELECT_UNSELECT_CARD]: (m, resolve) => ({
 		family: 'build',
@@ -210,10 +210,14 @@ const RULES = {
 	}),
 };
 
+const atNoPlace = (card) => card.location === 0;
+
 function handleOf(resolve, card) {
-	if (card.location === 0) fail('a card at no place — the name-list variant is not translated');
+	if (atNoPlace(card)) fail('a card at no place, where the prompt names cards by their place');
 	return resolve.handle(card);
 }
+
+const namedMember = (player, card, index) => ({ subject: seatOf(player), verb: VERB.pick, description: index, payload: index, code: card.code });
 
 function cardMember(resolve, card, verb, payload, extra = {}) {
 	return { subject: { kind: 'instance', inst: handleOf(resolve, card) }, verb, payload, code: card.code, ...extra };

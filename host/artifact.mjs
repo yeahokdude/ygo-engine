@@ -22,6 +22,7 @@ export function readCardTable(data) {
 	const cards = new Map(table.cards.map((card) => [card[at.code], card]));
 	return {
 		count: cards.size,
+		codes: [...cards.keys()],
 		read(code) {
 			const card = cards.get(code);
 			if (card === undefined) return null;

@@ -7,5 +7,5 @@ export { encodeResponse } from './responses.mjs';
 export { decodeQuery, decodeQueryLocation, decodeQueryField } from './queries.mjs';
 export { redact, redactQuery } from './redact.mjs';
 export { STATS_FLAGS, createTranslator, pollField, statsOf, zoneOf } from './translate.mjs';
-export { TRANSLATED_PROMPT_KINDS, captionOf, memberKey, replyFor, responseFor } from './prompts.mjs';
+export { captionOf, memberKey, replyFor, responseFor } from './prompts.mjs';
 export * as vocabulary from './vocabulary.mjs';

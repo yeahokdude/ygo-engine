@@ -1,5 +1,6 @@
 import { HINT, LOCATION, MSG, MSG_NAME, POS } from './constants.mjs';
-import { DECODED_KINDS, isPrompt } from './messages.mjs';
+import { declarableCodes } from './declare.mjs';
+import { isPrompt } from './messages.mjs';
 import { OUTCOME, PACK_PHASE, REGION, SHAPE, VERB } from './vocabulary.mjs';
 
 const IDLE = Object.freeze({ SUMMON: 0, SP_SUMMON: 1, POS_CHANGE: 2, MONSTER_SET: 3, SPELL_SET: 4, ACTIVATE: 5, TO_BP: 6, TO_EP: 7, SHUFFLE: 8 });
@@ -190,7 +191,17 @@ const RULES = {
 		shape: SHAPE.ONE_OF,
 		members: m.options.map((option, index) => ({ subject: seatOf(m.player), verb: VERB.declare, description: index, payload: index, value: scalar(option, 'a number option') })),
 	}),
-	[MSG.ANNOUNCE_CARD]: () => fail('ANNOUNCE_CARD is answered with a card code over an opcode expression, which no shape carries yet'),
+	[MSG.ANNOUNCE_CARD]: (m, _resolve, _hinted, pool) => ({
+		family: 'announce',
+		shape: SHAPE.ONE_OF,
+		members: declarableCodes(pool ?? fail('ANNOUNCE_CARD declares from the card table, and this translator holds none'), m.opcodes).map((code) => ({
+			subject: seatOf(m.player),
+			verb: VERB.declare,
+			description: code,
+			payload: code,
+			code,
+		})),
+	}),
 
 	[MSG.ROCK_PAPER_SCISSORS]: (m) => ({
 		family: 'rps',
@@ -255,10 +266,10 @@ function announceBits(m) {
 const subjectKey = (subject) => (subject.kind === 'instance' ? `i${subject.inst}` : subject.kind === 'zone' ? `z${subject.zone}` : `s${subject.seat}`);
 export const memberKey = (member) => `${subjectKey(member.subject)}|${member.verb}|${member.description ?? 0}|${member.clientMode ?? 0}`;
 
-export function translatePrompt(message, resolve, hinted = null) {
+export function translatePrompt(message, resolve, hinted = null, pool = null) {
 	if (!isPrompt(message.kind)) fail(`${MSG_NAME[message.kind] ?? message.kind} is not a prompt`);
 	const rule = RULES[message.kind] ?? fail(`no rule for ${MSG_NAME[message.kind]}`);
-	const { members, caption = hinted === null ? null : captionOf(hinted), ...rest } = rule(message, resolve, hinted);
+	const { members, caption = hinted === null ? null : captionOf(hinted), ...rest } = rule(message, resolve, hinted, pool);
 	const keys = new Set();
 	for (const member of members) {
 		const key = memberKey(member);
@@ -267,8 +278,6 @@ export function translatePrompt(message, resolve, hinted = null) {
 	}
 	return { kind: message.kind, player: message.player, caption, min: 1, max: 1, cancelable: false, finishable: false, ...rest, members };
 }
-
-export const TRANSLATED_PROMPT_KINDS = Object.freeze(DECODED_KINDS.filter((kind) => isPrompt(kind) && kind !== MSG.ANNOUNCE_CARD));
 
 export function captionHint(message) {
 	if (message.kind !== MSG.HINT || message.type !== HINT.SELECTMSG) return undefined;

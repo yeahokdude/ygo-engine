@@ -10,7 +10,7 @@ let outlet = null;
 function load(frame) {
 	const cards = readCardTable(frame.cards);
 	const scripts = readScriptPack(frame.scripts);
-	const session = createSession({ instantiate: factory, cardReader: cards.read, scriptReader: scripts.read, prelude: PRELUDE });
+	const session = createSession({ instantiate: factory, cardReader: cards.read, cardCodes: cards.codes, scriptReader: scripts.read, prelude: PRELUDE });
 	return session.attach({ seats: [0, 1], send });
 }
 

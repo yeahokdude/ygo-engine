@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 
 import {
-	ATTRIBUTE, DUEL, HINT, LOCATION, MSG, MSG_NAME, POS, RACE,
-	TRANSLATED_PROMPT_KINDS, clockFromSeed, createEngine, createTranslator, encodeResponse, isPrompt, loadDecks, memberKey, play, replyFor, responseFor, vocabulary, zoneOf,
+	ATTRIBUTE, DUEL, HINT, LOCATION, MSG, MSG_NAME, OPCODE, POS, RACE,
+	clockFromSeed, createEngine, createTranslator, encodeResponse, isPrompt, loadDecks, memberKey, play, replyFor, responseFor, vocabulary, zoneOf,
 } from '../driver/index.mjs';
 import { DECODED_KINDS } from '../driver/messages.mjs';
 import { translatePrompt } from '../driver/prompts.mjs';
@@ -15,9 +15,17 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 
 {
 	const prompts = DECODED_KINDS.filter(isPrompt);
-	assert.deepEqual(prompts.filter((kind) => !TRANSLATED_PROMPT_KINDS.includes(kind)), [MSG.ANNOUNCE_CARD]);
-	assert.equal(TRANSLATED_PROMPT_KINDS.length, 20);
-	console.log('kinds      ok  20 translated, ANNOUNCE_CARD refused');
+	const unruled = prompts.filter((kind) => {
+		try {
+			translatePrompt({ kind }, null);
+		} catch (error) {
+			return /no rule for/.test(error.message);
+		}
+		return false;
+	});
+	assert.deepEqual(unruled, []);
+	assert.equal(prompts.length, 21);
+	console.log('kinds      ok  21 translated');
 }
 
 {
@@ -239,7 +247,17 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 		const number = { kind: MSG.ANNOUNCE_NUMBER, player: 0, options: [4n, 8n, 12n] };
 		const numbered = roundTrip(number, 2).prompt;
 		assert.deepEqual(numbered.members.map((member) => [member.verb, member.value, member.payload]), [[VERB.declare, 4, 0], [VERB.declare, 8, 1], [VERB.declare, 12, 2]]);
-		assert.throws(() => translate({ kind: MSG.ANNOUNCE_CARD, player: 0, opcodes: [] }), /ANNOUNCE_CARD/);
+		const pool = { codes: [5, 6, 7], read: (code) => ({ code, alias: code === 7 ? 5 : 0, setcodes: [], type: 0x11, attribute: 1, race: 1n }) };
+		const card = { kind: MSG.ANNOUNCE_CARD, player: 1, opcodes: [0x11n, OPCODE.ISTYPE] };
+		const announced = translatePrompt(card, resolve, null, pool);
+		assert.deepEqual([announced.family, announced.shape, announced.cancelable], ['announce', SHAPE.ONE_OF, false]);
+		assert.deepEqual(announced.members, [5, 6].map((code) => ({ subject: { kind: 'seat', seat: 1 }, verb: VERB.declare, description: code, payload: code, code })), 'one member per code the expression declares, an alias left out');
+		assert.deepEqual(replyFor(announced, 6), { shape: SHAPE.ONE_OF, member: 1 });
+		assert.equal(bytesOf(card.kind, responseFor(announced, { shape: SHAPE.ONE_OF, member: 1 })), bytesOf(card.kind, 6));
+		assert.throws(() => translate(card), /holds none/);
+		const pooled = createTranslator({ seats: [0, 1], pool });
+		pooled.open([{ main: [5] }, { main: [6] }]);
+		assert.deepEqual(pooled.prompt(card).members.map((member) => member.code), [5, 6], 'the translator declares from the pool it was given');
 	}
 	{
 		const { prompt } = roundTrip({ kind: MSG.ROCK_PAPER_SCISSORS, player: 1 }, 3);

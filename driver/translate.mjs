@@ -86,7 +86,7 @@ export function pollField(duel) {
 const seatState = (lp) => ({ lp, mzone: new Array(7).fill(0), szone: new Array(8).fill(0), deck: [], hand: [], grave: [], removed: [], extra: [] });
 const describe = ({ controller, location, sequence, position }) => `${controller}/${LOCATION_NAME[location & ~LOCATION.OVERLAY] ?? location}/${sequence}${location & LOCATION.OVERLAY ? `#${position}` : ''}`;
 
-export function createTranslator({ seats, startingLP = [8000, 8000] }) {
+export function createTranslator({ seats, startingLP = [8000, 8000], pool = null }) {
 	const holds = (player) => seats.includes(player);
 	const table = [seatState(startingLP[0]), seatState(startingLP[1])];
 	const cards = new Map();
@@ -492,7 +492,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000] }) {
 			const hinted = hint;
 			hint = null;
 			consumed = hinted;
-			return translatePrompt(message, { handle: at, zone: zoneOf }, hinted);
+			return translatePrompt(message, { handle: at, zone: zoneOf }, hinted, pool);
 		},
 
 		again() {

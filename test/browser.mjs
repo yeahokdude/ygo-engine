@@ -45,6 +45,7 @@ function scriptPack(entries, { magic = 'OCGS', version = 1 } = {}) {
 {
 	const table = readCardTable(cardTable(CARDS).buffer);
 	assert.equal(table.count, CARDS.size);
+	assert.deepEqual(table.codes, [...CARDS.keys()], 'every code the table rows, in its order');
 	for (const [code, card] of CARDS) assert.deepEqual(table.read(code), { ...card, race: Number(card.race), lscale: 0, rscale: 0, linkMarker: 0 }, `card ${code}`);
 	assert.equal(table.read(999), null, 'a code the table lacks reads as no card');
 	const reversed = readCardTable(cardTable(CARDS, { columns: [...COLUMNS].reverse() }));

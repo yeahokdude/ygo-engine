@@ -14,7 +14,8 @@ const filtered = (messages, seats) => messages.map((message) => redact(message, 
 const PROCESS = 'process';
 const POLL = 'poll';
 
-export function createSession({ instantiate, cardReader, scriptReader, prelude = [], log = () => {} }) {
+export function createSession({ instantiate, cardReader, cardCodes = null, scriptReader, prelude = [], log = () => {} }) {
+	const pool = cardCodes === null ? null : { codes: cardCodes, read: cardReader };
 	const outlets = new Set();
 	let engine = null;
 	let duel = null;
@@ -134,7 +135,7 @@ export function createSession({ instantiate, cardReader, scriptReader, prelude =
 		duel = made;
 		const startingLP = teams.map((team) => team.startingLP);
 		for (const outlet of outlets) {
-			outlet.translator = createTranslator({ seats: outlet.seats, startingLP });
+			outlet.translator = createTranslator({ seats: outlet.seats, startingLP, pool });
 			outlet.lead = outlet.translator.open(orders);
 		}
 		for (const outlet of [...outlets]) outlet.send({ type: 'opened', protocol: PROTOCOL, clock: deal.duel.clock, seats: outlet.seats });

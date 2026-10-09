@@ -3,7 +3,7 @@ import { MessageChannel } from 'node:worker_threads';
 
 import { ATTRIBUTE, DUEL_STATUS, LOCATION, MSG, QUERY, RACE, TYPE, clockFromSeed, createTranslator, redact, vocabulary } from '../driver/index.mjs';
 import { PROTOCOL, createSession } from '../host/session.mjs';
-import { DECKS, SEED, TEAM, browserEntry, cardReader, directDuel, stringify } from './vanilla.mjs';
+import { CARDS, DECKS, SEED, TEAM, browserEntry, cardReader, directDuel, stringify } from './vanilla.mjs';
 
 const { EMZ, FLAG, OUTCOME, PACK_PHASE, SHAPE, TAG, VERB, ZONE, seatZone, zoneRef } = vocabulary;
 const browser = await browserEntry();
@@ -428,4 +428,42 @@ async function conjured(script) {
 	assert.ok(test.lp[1] <= 0 && test.steps.length - test.out >= 60, 'and is attacked out of life points while the duel plays on');
 	assert.ok(test.steps.slice(test.out).some((step) => step.prompt?.player === 1), 'through the turn nobody across cannot draw for');
 	console.log(`hand test ok  ${test.steps.length} steps, nobody across at ${test.lp[1]} LP`);
+}
+
+{
+	const SHUFFLER = 81;
+	const rows = new Map([...CARDS, [SHUFFLER, { code: SHUFFLER, alias: 0, setcodes: [], type: TYPE.SPELL, level: 0, attribute: 0, race: 0, attack: 0, defense: 0 }]]);
+	const script = `function c${SHUFFLER}.initial_effect(c)
+	local e=Effect.CreateEffect(c)
+	e:SetType(0x10)
+	e:SetCode(1002)
+	e:SetOperation(function(e,tp) Duel.ShuffleDeck(tp) Duel.Draw(tp,5,0x40) end)
+	c:RegisterEffect(e)
+end`;
+	const deck = { main: [SHUFFLER, ...DECKS[0].main.slice(1)], extra: [] };
+	const draws = (steps) => rowsOf(steps).filter((row) => row.t === TAG.MOVE && row.verb === VERB.draw && row.actor === 0).flatMap((row) => row.cards);
+	const played = async (open) => {
+		const session = createSession({ instantiate: browser, cardReader: (code) => rows.get(code) ?? null, scriptReader: (name) => (name === `c${SHUFFLER}.lua` ? script : null) });
+		const solo = client(session, [0, 1], { answers: false });
+		solo.send({ ...OPEN, decks: [deck, DECKS[1]], ...open });
+		const answer = async (reply) => {
+			const seen = solo.steps.length;
+			solo.send({ type: 'answer', kind: solo.steps.at(-1).prompt.kind, reply });
+			await until(solo.frames, () => solo.steps.length > seen);
+		};
+		await until(solo.frames, () => solo.steps.length > 0);
+		const opening = draws(solo.steps);
+		const idle = solo.steps.at(-1).prompt;
+		await answer({ shape: SHAPE.ONE_OF, member: idle.members.findIndex((member) => member.verb === VERB.activate && member.code === SHUFFLER) });
+		while (solo.steps.at(-1).prompt?.family !== 'idle') await answer(passOn(solo.steps.at(-1).prompt));
+		const shuffled = rowsOf(solo.steps).some((row) => row.t === TAG.SHUFFLE && row.verb === VERB.shuffleDeck && row.actor === 0);
+		session.close();
+		solo.close();
+		return { opening, drawn: draws(solo.steps).slice(opening.length), shuffled };
+	};
+	const kept = await played({ shuffle: false });
+	assert.deepEqual(kept.opening, deck.main.slice(0, 5), 'an unshuffled deck opens on its first five cards');
+	assert.ok(kept.shuffled, 'the Deck shuffle is still a row');
+	assert.deepEqual(kept.drawn, deck.main.slice(5, 10), 'and draws on in the order it was listed');
+	console.log(`no shuffle ok  drew ${kept.drawn.join(' ')} after the shuffle`);
 }

@@ -127,9 +127,10 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 		const seed = spec.seed.map((word) => BigInt(word));
 		const teams = [{ ...TEAM, ...spec.teams?.[0] }, { ...TEAM, ...spec.teams?.[1] }];
 		const handTest = spec.handTest === true;
+		const shuffle = spec.shuffle !== false;
 		const mode = spec.flags === undefined ? DUEL.MODE_MR5 : BigInt(spec.flags);
-		const flags = handTest ? mode | DUEL.ATTACK_FIRST_TURN : mode;
-		deal = { duel: { seed, flags, team1: teams[0], team2: teams[1], cardReader, scriptReader, clock: clockFromSeed(seed) }, decks: spec.decks, shuffle: spec.shuffle !== false, handTest };
+		const flags = mode | (handTest ? DUEL.ATTACK_FIRST_TURN : 0n) | (shuffle ? 0n : DUEL.PSEUDO_SHUFFLE);
+		deal = { duel: { seed, flags, team1: teams[0], team2: teams[1], cardReader, scriptReader, clock: clockFromSeed(seed) }, decks: spec.decks, shuffle, handTest };
 		const { fresh, made, orders } = await dealt();
 		engine = fresh;
 		duel = made;

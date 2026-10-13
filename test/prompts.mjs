@@ -229,10 +229,12 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 		const link = (code, sequence, description) => ({ ...card(code, 1, LOCATION.MZONE, sequence), description, clientMode: 0 });
 		const chain = { kind: MSG.SELECT_CHAIN, player: 1, specialCount: 1, forced: false, hintTiming: [0x8, 0], chains: [link(4, 0, (4n << 20n) | 0n), link(5, 1, (5n << 20n) | 1n)] };
 		const { prompt } = roundTrip(chain, 1);
-		assert.deepEqual([prompt.family, prompt.cancelable, prompt.ordering, prompt.timing], ['chain', true, false, [8, 0]]);
+		assert.deepEqual([prompt.family, prompt.cancelable, prompt.ordering, prompt.useful, prompt.timing], ['chain', true, false, true, [8, 0]]);
+		assert.equal(translate({ ...chain, specialCount: 0 }).useful, false);
 		assert.deepEqual(prompt.members.map((member) => [member.verb, member.description, member.payload]), [[VERB.activate, 4 << 20, 0], [VERB.activate, (5 << 20) | 1, 1]]);
 		assert.deepEqual(roundTrip(chain, null).reply, { shape: SHAPE.TERMINAL, outcome: OUTCOME.DECLINE });
-		const empty = translate({ ...chain, chains: [] });
+		const empty = translate({ ...chain, specialCount: 0, chains: [] });
+		assert.equal(empty.useful, false);
 		assert.deepEqual(replyFor(empty, null), { shape: SHAPE.TERMINAL, outcome: OUTCOME.EMPTY });
 		assert.equal(responseFor(empty, { shape: SHAPE.TERMINAL, outcome: OUTCOME.EMPTY }), null);
 		const forced = translate({ ...chain, forced: true, specialCount: 0x7f });

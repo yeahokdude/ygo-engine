@@ -180,6 +180,7 @@ const RULES = {
 		shape: SHAPE.ONE_OF,
 		cancelable: !m.forced,
 		ordering: m.specialCount === CHAIN_ORDERING,
+		useful: m.specialCount > 0,
 		timing: m.hintTiming,
 		members: m.chains.map((effect, index) => effectMember(resolve, effect, index)),
 	}),

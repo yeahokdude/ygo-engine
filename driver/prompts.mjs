@@ -185,8 +185,8 @@ const RULES = {
 		members: m.chains.map((effect, index) => effectMember(resolve, effect, index)),
 	}),
 
-	[MSG.ANNOUNCE_RACE]: (m) => announceBits(m),
-	[MSG.ANNOUNCE_ATTRIB]: (m) => announceBits(m),
+	[MSG.ANNOUNCE_RACE]: (m) => declaredBits(m, 'race'),
+	[MSG.ANNOUNCE_ATTRIB]: (m) => declaredBits(m, 'attribute'),
 	[MSG.ANNOUNCE_NUMBER]: (m) => ({
 		family: 'announce',
 		shape: SHAPE.ONE_OF,
@@ -258,9 +258,9 @@ function zonePrompt(m, resolve) {
 const packPlace = (player, location, sequence) => (player << 16) | (location << 8) | sequence;
 const unpackPlace = (packed) => ({ player: packed >>> 16, location: (packed >>> 8) & 0xff, sequence: packed & 0xff });
 
-function announceBits(m) {
+function declaredBits(m, family) {
 	return {
-		family: 'announce',
+		family,
 		shape: SHAPE.SUBSET,
 		min: m.count,
 		max: m.count,

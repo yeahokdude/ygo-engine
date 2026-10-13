@@ -245,15 +245,17 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 	{
 		const race = { kind: MSG.ANNOUNCE_RACE, player: 0, count: 2, available: BigInt(RACE.WARRIOR) | BigInt(RACE.DRAGON) | (1n << 62n) };
 		const { prompt, reply } = roundTrip(race, BigInt(RACE.DRAGON) | (1n << 62n));
-		assert.deepEqual([prompt.family, prompt.min, prompt.max], ['announce', 2, 2]);
+		assert.deepEqual([prompt.family, prompt.min, prompt.max], ['race', 2, 2]);
 		const bitOf = (mask) => BigInt(mask).toString(2).length - 1;
 		assert.deepEqual(prompt.members.map((member) => [member.verb, member.description]), [[VERB.declare, bitOf(RACE.WARRIOR)], [VERB.declare, bitOf(RACE.DRAGON)], [VERB.declare, 62]]);
 		assert.deepEqual(reply, { shape: SHAPE.SUBSET, members: [1, 2] });
 		const attribute = { kind: MSG.ANNOUNCE_ATTRIB, player: 0, count: 1, available: ATTRIBUTE.LIGHT | ATTRIBUTE.DARK };
 		roundTrip(attribute, ATTRIBUTE.DARK);
-		assert.equal(translate(attribute).members.length, 2);
+		assert.equal(translate(attribute).family, 'attribute');
+		assert.deepEqual(translate(attribute).members.map((member) => [member.verb, member.description]), [[VERB.declare, 4], [VERB.declare, 5]]);
 		const number = { kind: MSG.ANNOUNCE_NUMBER, player: 0, options: [4n, 8n, 12n] };
 		const numbered = roundTrip(number, 2).prompt;
+		assert.equal(numbered.family, 'announce');
 		assert.deepEqual(numbered.members.map((member) => [member.verb, member.value, member.payload]), [[VERB.declare, 4, 0], [VERB.declare, 8, 1], [VERB.declare, 12, 2]]);
 		const pool = { codes: [5, 6, 7], read: (code) => ({ code, alias: code === 7 ? 5 : 0, setcodes: [], type: 0x11, attribute: 1, race: 1n }) };
 		const card = { kind: MSG.ANNOUNCE_CARD, player: 1, opcodes: [0x11n, OPCODE.ISTYPE] };

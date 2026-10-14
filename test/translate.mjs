@@ -387,10 +387,11 @@ const played = await (async () => {
 		], 'a look is its looker\'s, and a confirm anywhere else is revealed by each card\'s controller, not by the seat it is shown to');
 		assert.deepEqual(looks[3].insts, [H.top0]);
 		assert.equal(translator.board()[0].deck[1].code, 2, 'a look teaches the shadow the code');
-		const tosses = translator.translate([{ kind: MSG.TOSS_COIN, player: 0, results: [1, 0] }, { kind: MSG.TOSS_DICE, player: 1, results: [6] }, { kind: MSG.REMOVE_CARDS, cards: [at(1, LOCATION.MZONE, 6)] }]);
+		const tosses = translator.translate([{ kind: MSG.TOSS_COIN, player: 0, results: [1, 0] }, { kind: MSG.TOSS_DICE, player: 1, results: [6] }, { kind: MSG.HAND_RES, hands: [2, 3] }, { kind: MSG.REMOVE_CARDS, cards: [at(1, LOCATION.MZONE, 6)] }]);
 		assert.deepEqual(tosses, [
 			{ t: TAG.COIN, actor: 0, nums: [1, 0], verb: VERB.coin },
 			{ t: TAG.DICE, actor: 1, nums: [6], verb: VERB.dice },
+			{ t: TAG.THROW, nums: [2, 3] },
 			{ t: TAG.REMOVE, insts: [H.top1] },
 		]);
 		assert.equal(translator.board()[1].mzone[6], null);

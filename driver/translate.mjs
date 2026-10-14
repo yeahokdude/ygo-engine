@@ -405,6 +405,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 
 		[MSG.TOSS_COIN]: (m, rows) => rows.push({ t: TAG.COIN, actor: m.player, nums: [...m.results], verb: VERB.coin }),
 		[MSG.TOSS_DICE]: (m, rows) => rows.push({ t: TAG.DICE, actor: m.player, nums: [...m.results], verb: VERB.dice }),
+		[MSG.HAND_RES]: (m, rows) => rows.push({ t: TAG.THROW, nums: [...m.hands] }),
 
 		[MSG.REMOVE_CARDS]: (m, rows) => {
 			const insts = m.cards.map(at);
@@ -428,7 +429,6 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		[MSG.DAMAGE_STEP_START]: silent,
 		[MSG.DAMAGE_STEP_END]: silent,
 		[MSG.MISSED_EFFECT]: silent,
-		[MSG.HAND_RES]: silent,
 		[MSG.FIELD_DISABLED]: silent,
 		[MSG.HINT]: (m) => {
 			const hinted = captionHint(m);

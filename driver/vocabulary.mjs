@@ -17,6 +17,7 @@ export const TAG = Object.freeze({
 	DICE: 42,
 	PHASE: 43,
 	TURN: 45,
+	THROW: 49,
 	STATS: 60,
 	CHAIN: 61,
 });

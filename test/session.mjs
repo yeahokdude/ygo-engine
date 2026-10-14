@@ -431,6 +431,72 @@ async function conjured(script) {
 }
 
 {
+	const NOBODY = { main: [], extra: [] };
+	const HELD = { ...OPEN, decks: [DECKS[0], NOBODY], holdWin: true };
+	const errors = (solo) => solo.frames.filter((frame) => frame.type === 'error');
+	const refusal = async (solo, frame) => {
+		const seen = errors(solo).length;
+		solo.send(frame);
+		await until(solo.frames, () => errors(solo).length > seen);
+		return errors(solo).at(-1);
+	};
+	const held = async (script) => {
+		const session = createSession({ instantiate: browser, cardReader, scriptReader: () => null });
+		const solo = client(session, [0, 1], { answers: false });
+		const settled = async (count) => {
+			await until(solo.frames, () => solo.steps.length >= count);
+			return solo.steps.at(-1);
+		};
+		solo.send(HELD);
+		await script(solo, settled);
+		session.close();
+		solo.close();
+		return solo;
+	};
+	const play = async (solo, settled) => {
+		const won = await settled(1);
+		assert.equal(won.rows[0].t, TAG.SETUP, 'the deal arrives with the win');
+		assert.deepEqual([won.prompt, won.waiting, Object.keys(won.win).sort()], [null, null, ['player', 'reason']], 'a held win asks nothing and names the seat and the reason');
+		assert.equal(won.win.player, 0);
+		assert.ok(!solo.frames.some((frame) => frame.type === 'end'), 'and does not end the duel');
+		assert.match((await refusal(solo, { type: 'answer', kind: MSG.SELECT_IDLECMD, reply: { shape: SHAPE.ONE_OF, member: 0 } })).message, /no prompt/);
+		assert.match((await refusal(solo, { type: 'create', seat: 0, code: 41, zone: seatZone(0, ZONE.HAND), flags: 0 })).message, /while a prompt is pending/);
+		solo.send({ type: 'playOn' });
+		let step = await settled(2);
+		assert.equal(step.prompt.family, 'idle', 'played on, the duel asks its next question');
+		assert.match((await refusal(solo, { type: 'playOn' })).message, /no win is held/);
+		for (let count = 3; count < 80; count++) {
+			solo.send({ type: 'answer', kind: step.prompt.kind, reply: passOn(step.prompt) });
+			step = await settled(count);
+		}
+		assert.ok(solo.steps.slice(1).every((one) => one.win === undefined && one.prompt !== null), 'no later win holds the duel or ends it');
+		assert.ok(solo.steps.some((one) => one.prompt?.player === 1), 'through the turns nobody across cannot draw for');
+		while (step.prompt.family !== 'idle') {
+			solo.send({ type: 'answer', kind: step.prompt.kind, reply: passOn(step.prompt) });
+			step = await settled(solo.steps.length + 1);
+		}
+		solo.send({ type: 'create', seat: step.prompt.player, code: 41, zone: seatZone(step.prompt.player, ZONE.HAND), flags: 0 });
+		const made = await settled(solo.steps.length + 1);
+		assert.equal(made.rows[0].t, TAG.CREATE, 'a card is made past the win, the duel dealt again through it');
+		assert.equal(made.prompt.family, 'idle');
+	};
+	const live = await held(play);
+	const again = await held(play);
+	assert.equal(stringify(again.steps), stringify(live.steps), 'a duel played on past its win plays the same every time');
+
+	const session = createSession({ instantiate: browser, cardReader, scriptReader: () => null });
+	const seat0 = client(session, [0], { answers: false });
+	await session.open({ ...HELD, seed: SEED });
+	await until(seat0.frames, (frame) => frame.type === 'step');
+	assert.match((await refusal(seat0, { type: 'playOn' })).message, /both seats may play on/);
+	session.close();
+	const closed = await seat0.ended;
+	assert.equal(closed.reason, 'closed', 'a held win ends only when the session closes');
+	seat0.close();
+	console.log(`held win  ok  ${live.steps.length} steps played on past a win`);
+}
+
+{
 	const SHUFFLER = 81;
 	const rows = new Map([...CARDS, [SHUFFLER, { code: SHUFFLER, alias: 0, setcodes: [], type: TYPE.SPELL, level: 0, attribute: 0, race: 0, attack: 0, defense: 0 }]]);
 	const script = `function c${SHUFFLER}.initial_effect(c)

@@ -29,6 +29,8 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 	let field = null;
 	let disabled = 0;
 	let quiet = false;
+	let held = null;
+	let playingOn = false;
 
 	const broadcast = (frame) => {
 		for (const outlet of [...outlets]) outlet.send(frame);
@@ -37,6 +39,7 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 		if (ended) return;
 		ended = true;
 		pending = null;
+		held = null;
 		broadcast({ type: 'end', decisions, ...frame });
 	};
 
@@ -46,7 +49,7 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 		return field;
 	};
 
-	const deliver = (messages, prompt, retry) => {
+	const deliver = (messages, prompt, retry, win = null) => {
 		const frames = [];
 		const polled = poll();
 		for (const outlet of [...outlets]) {
@@ -55,7 +58,8 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 			const rows = outlet.lead.concat(translator.translate(filtered(messages, seats)), translator.stats(polled));
 			outlet.lead = [];
 			if (!retry) outlet.prompt = mine ? translator.prompt(redact(prompt, seats)) : null;
-			frames.push([outlet, { type: 'step', rows, prompt: mine ? outlet.prompt : null, waiting: prompt !== null && !mine ? prompt.player : null, retry }]);
+			const frame = { type: 'step', rows, prompt: mine ? outlet.prompt : null, waiting: prompt !== null && !mine ? prompt.player : null, retry };
+			frames.push([outlet, win === null ? frame : { ...frame, win }]);
 		}
 		for (const [outlet, frame] of frames) outlet.send(frame);
 	};
@@ -70,7 +74,7 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 				const batch = advance(duel);
 				messages.push(...batch.messages);
 				for (const message of batch.messages) if (message.kind === MSG.FIELD_DISABLED) disabled = message.mask;
-				if (batch.win && !deal.handTest) {
+				if (batch.win && !deal.handTest && !playingOn) {
 					outcome = { reason: 'win', win: { player: batch.win.player, reason: batch.win.reason } };
 					break;
 				}
@@ -92,12 +96,14 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 			}
 			if (answered) decisions++;
 			pending = null;
-			deliver(messages, null, false);
+			const win = deal.holdWin && outcome.win ? outcome.win : null;
+			deliver(messages, null, false, win);
+			held = win;
 		} catch (error) {
 			end({ reason: 'error', message: String(error?.message ?? error) });
 			return;
 		}
-		end(outcome);
+		if (held === null) end(outcome);
 	};
 
 	const dealt = async () => {
@@ -128,9 +134,10 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 		const teams = [{ ...TEAM, ...spec.teams?.[0] }, { ...TEAM, ...spec.teams?.[1] }];
 		const handTest = spec.handTest === true;
 		const shuffle = spec.shuffle !== false;
+		const holdWin = spec.holdWin === true;
 		const mode = spec.flags === undefined ? DUEL.MODE_MR5 : BigInt(spec.flags);
 		const flags = mode | (handTest ? DUEL.ATTACK_FIRST_TURN : 0n) | (shuffle ? 0n : DUEL.PSEUDO_SHUFFLE);
-		deal = { duel: { seed, flags, team1: teams[0], team2: teams[1], cardReader, scriptReader, clock: clockFromSeed(seed) }, decks: spec.decks, shuffle, handTest };
+		deal = { duel: { seed, flags, team1: teams[0], team2: teams[1], cardReader, scriptReader, clock: clockFromSeed(seed) }, decks: spec.decks, shuffle, handTest, holdWin };
 		const { fresh, made, orders } = await dealt();
 		engine = fresh;
 		duel = made;
@@ -232,6 +239,13 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 							duel.respondBytes(bytes);
 							calls.push({ respond: bytes });
 							return step(true);
+						}
+						case 'playOn': {
+							if (outlet.seats.length !== 2) return refuse(frame, 'only an outlet holding both seats may play on');
+							if (held === null) return refuse(frame, 'no win is held');
+							held = null;
+							playingOn = true;
+							return step();
 						}
 						case 'create': {
 							if (outlet.seats.length !== 2) return refuse(frame, 'only an outlet holding both seats may make a card');

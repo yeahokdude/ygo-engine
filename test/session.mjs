@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { MessageChannel } from 'node:worker_threads';
 
-import { ATTRIBUTE, DUEL_STATUS, LOCATION, MSG, QUERY, RACE, TYPE, clockFromSeed, createTranslator, redact, vocabulary } from '../driver/index.mjs';
+import { ATTRIBUTE, DUEL_STATUS, LOCATION, MSG, POS, QUERY, RACE, TYPE, clockFromSeed, createTranslator, redact, vocabulary } from '../driver/index.mjs';
 import { PROTOCOL, createSession } from '../host/session.mjs';
 import { CARDS, DECKS, SEED, TEAM, browserEntry, cardReader, directDuel, stringify } from './vanilla.mjs';
 
-const { EMZ, FLAG, OUTCOME, PACK_PHASE, SHAPE, TAG, VERB, ZONE, seatZone, zoneRef } = vocabulary;
+const { EMZ, FLAG, OUTCOME, PACK_PHASE, REGION, SHAPE, TAG, VERB, ZONE, seatZone, zoneRef } = vocabulary;
 const browser = await browserEntry();
 const STARTING_LP = [TEAM.startingLP, TEAM.startingLP];
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -466,4 +466,51 @@ end`;
 	assert.ok(kept.shuffled, 'the Deck shuffle is still a row');
 	assert.deepEqual(kept.drawn, deck.main.slice(5, 10), 'and draws on in the order it was listed');
 	console.log(`no shuffle ok  drew ${kept.drawn.join(' ')} after the shuffle`);
+}
+
+{
+	const DEFENSE = 90;
+	const BOTH = 91;
+	const LINKED = 92;
+	const FUSED = 93;
+	const monster = (code, type) => [code, { code, alias: 0, setcodes: [], type: TYPE.MONSTER | TYPE.EFFECT | type, level: 4, attribute: ATTRIBUTE.EARTH, race: RACE.WARRIOR, attack: 1000, defense: 1000, linkMarker: type === TYPE.LINK ? 0o40 : 0 }];
+	const rows = new Map([...CARDS, monster(DEFENSE, 0), monster(BOTH, 0), monster(LINKED, TYPE.LINK), monster(FUSED, TYPE.FUSION)]);
+	const procedure = (range, positions) => `local e=Effect.CreateEffect(c)
+	e:SetType(0x2)
+	e:SetCode(34)
+	e:SetRange(${range})
+	${positions === null ? '' : `e:SetProperty(0x100000)
+	e:SetTargetRange(${positions},0)`}
+	c:RegisterEffect(e)`;
+	const scripts = new Map([
+		[DEFENSE, [procedure(LOCATION.HAND, 4)]],
+		[BOTH, [procedure(LOCATION.HAND, 4), procedure(LOCATION.HAND, 1)]],
+		[LINKED, [procedure(LOCATION.EXTRA, null)]],
+		[FUSED, [procedure(LOCATION.EXTRA, null)]],
+	].map(([code, parts]) => [`c${code}.lua`, `function c${code}.initial_effect(c)\n\t${parts.join('\n\t')}\nend`]));
+	const session = createSession({ instantiate: browser, cardReader: (code) => rows.get(code) ?? null, scriptReader: (name) => scripts.get(name) ?? null });
+	const solo = client(session, [0, 1], { answers: false });
+	solo.send({ ...OPEN, decks: [{ main: [DEFENSE, BOTH, ...DECKS[0].main.slice(2)], extra: [LINKED, FUSED] }, DECKS[1]], shuffle: false });
+	const answer = async (reply) => {
+		const seen = solo.steps.length;
+		solo.send({ type: 'answer', kind: solo.steps.at(-1).prompt.kind, reply });
+		await until(solo.frames, () => solo.steps.length > seen);
+		return solo.steps.at(-1).prompt;
+	};
+	await until(solo.frames, () => solo.steps.length > 0);
+	const idle = solo.steps.at(-1).prompt;
+	const summons = idle.members.filter((member) => member.verb === VERB.specialSummon);
+	assert.deepEqual(summons.map((member) => [member.code, member.regions]).sort(([a], [b]) => a - b), [[DEFENSE, [REGION.DEF]], [BOTH, [REGION.ATK, REGION.DEF]], [LINKED, [REGION.ATK]], [FUSED, [REGION.ATK, REGION.DEF]]], 'each card once, in the positions its procedures summon it in — a Link in attack alone');
+	let asked = await answer({ shape: SHAPE.ONE_OF, member: idle.members.findIndex((member) => member.verb === VERB.specialSummon && member.code === DEFENSE) });
+	assert.equal(asked.family, 'zone', 'a summon in one position is asked its zone');
+	asked = await answer({ shape: SHAPE.SUBSET, members: [0] });
+	while (asked?.family === 'chain') asked = await answer({ shape: SHAPE.TERMINAL, outcome: OUTCOME.DECLINE });
+	assert.equal(asked?.family, 'idle', 'and never its position');
+	const [landed] = session.query({ location: { flags: QUERY.POSITION | QUERY.CODE, controller: 0, location: LOCATION.MZONE } }, [0, 1]).filter((card) => card !== null);
+	assert.deepEqual([landed.code, landed.position], [DEFENSE, POS.FACEUP_DEFENSE], 'it lands in the one position offered');
+	asked = await answer({ shape: SHAPE.ONE_OF, member: asked.members.findIndex((member) => member.verb === VERB.specialSummon && member.code === BOTH) });
+	assert.equal(asked.family, 'option', 'a card two procedures summon is asked which');
+	session.close();
+	solo.close();
+	console.log(`summoned   ok  ${summons.length} Special Summons, each in its procedures' positions`);
 }

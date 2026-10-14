@@ -22,7 +22,11 @@
 //   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 //   SOFTWARE.
 
+#include "core/card.h"
 #include "core/common.h"
+#include "core/duel.h"
+#include "core/effect.h"
+#include "core/field.h"
 #include "core/ocgapi.h"
 #include <emscripten.h>
 #include <cstdlib>
@@ -119,6 +123,22 @@ void* EMSCRIPTEN_KEEPALIVE ocgapiDuelQueryLocation(OCG_Duel duel, uint32_t* leng
 
 void* EMSCRIPTEN_KEEPALIVE ocgapiDuelQueryField(OCG_Duel duel, uint32_t* length) {
 	return OCG_DuelQueryField(duel, length);
+}
+
+uint32_t EMSCRIPTEN_KEEPALIVE ocgapiDuelSummonPositions(OCG_Duel handle, uint8_t controller, uint32_t location, uint32_t sequence) {
+	card* pcard = static_cast<duel*>(handle)->game_field->get_field_card(controller, location, sequence);
+	if(pcard == nullptr)
+		return 0;
+	uint32_t positions = 0;
+	auto procedures = pcard->field_effect.equal_range(EFFECT_SPSUMMON_PROC);
+	for(auto it = procedures.first; it != procedures.second; ++it) {
+		effect* peffect = it->second;
+		uint8_t taken = peffect->is_flag(EFFECT_FLAG_SPSUM_PARAM) ? static_cast<uint8_t>(peffect->s_range) : POS_FACEUP;
+		positions |= taken != 0 ? taken : POS_FACEUP_ATTACK;
+	}
+	if(positions != 0 && (pcard->data.type & TYPE_LINK) && (pcard->data.type & TYPE_MONSTER))
+		return POS_FACEUP_ATTACK;
+	return positions;
 }
 
 }

@@ -16,7 +16,12 @@ export function advance(duel) {
 			if (isPrompt(messages[index].kind)) prompt = messages[index];
 		}
 	}
-	return { status, messages, prompt, win, retry };
+	return { status, messages, prompt: prompt === null ? null : positioned(duel, prompt), win, retry };
+}
+
+function positioned(duel, prompt) {
+	if (prompt.kind !== MSG.SELECT_IDLECMD) return prompt;
+	return { ...prompt, spSummonable: prompt.spSummonable.map((card) => ({ ...card, positions: duel.summonPositions(card) })) };
 }
 
 export function play(duel, answer, { decisionCap = 20_000, onBatch } = {}) {

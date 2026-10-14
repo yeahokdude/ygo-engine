@@ -41,6 +41,23 @@ const POSITIONS = [
 	[POS.FACEDOWN_ATTACK, VERB.setAttack, null],
 ];
 
+const placeOf = ({ controller, location, sequence }) => `${controller}/${location}/${sequence}`;
+
+function onePerCard(cards) {
+	const seen = new Set();
+	return cards.flatMap((card, index) => {
+		const place = placeOf(card);
+		if (seen.has(place)) return [];
+		seen.add(place);
+		return [[card, index]];
+	});
+}
+
+function summonMember(resolve, card, index) {
+	const regions = POSITIONS.filter(([position, , region]) => region !== null && (card.positions ?? 0) & position).map(([, , region]) => region);
+	return cardMember(resolve, card, VERB.specialSummon, command(IDLE.SP_SUMMON, index), regions.length ? { regions } : {});
+}
+
 function bitsOf(mask) {
 	const value = BigInt(mask);
 	const bits = [];
@@ -56,7 +73,7 @@ const RULES = {
 		shape: SHAPE.ONE_OF,
 		members: [
 			...m.summonable.map((card, index) => cardMember(resolve, card, VERB.normalSummon, command(IDLE.SUMMON, index))),
-			...m.spSummonable.map((card, index) => cardMember(resolve, card, VERB.specialSummon, command(IDLE.SP_SUMMON, index))),
+			...onePerCard(m.spSummonable).map(([card, index]) => summonMember(resolve, card, index)),
 			...m.repositionable.map((card, index) => cardMember(resolve, card, VERB.position, command(IDLE.POS_CHANGE, index))),
 			...m.monsterSettable.map((card, index) => cardMember(resolve, card, VERB.setMonster, command(IDLE.MONSTER_SET, index))),
 			...m.spellSettable.map((card, index) => cardMember(resolve, card, VERB.setSpellTrap, command(IDLE.SPELL_SET, index))),

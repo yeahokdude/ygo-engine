@@ -105,6 +105,29 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 		assert.throws(() => responseFor(prompt, { shape: SHAPE.TERMINAL, outcome: OUTCOME.DECLINE }), /cannot be walked away from/);
 	}
 	{
+		const idle = {
+			kind: MSG.SELECT_IDLECMD, player: 0, summonable: [],
+			spSummonable: [
+				{ ...card(1, 0, LOCATION.HAND, 0), positions: POS.FACEUP_DEFENSE },
+				{ ...card(1, 0, LOCATION.HAND, 0), positions: POS.FACEUP_DEFENSE },
+				{ ...card(7, 0, LOCATION.EXTRA, 0), positions: POS.FACEUP },
+				{ ...card(8, 0, LOCATION.EXTRA, 1), positions: POS.FACEUP_ATTACK | POS.FACEDOWN_DEFENSE },
+				{ ...card(9, 0, LOCATION.GRAVE, 0), positions: POS.FACEDOWN_ATTACK },
+				card(10, 0, LOCATION.REMOVED, 0),
+			],
+			repositionable: [], monsterSettable: [], spellSettable: [], activatable: [], toBp: false, toEp: true, canShuffle: false,
+		};
+		const { prompt } = roundTrip(idle, { action: 1, index: 0 });
+		const summons = prompt.members.filter((member) => member.verb === VERB.specialSummon);
+		assert.deepEqual(
+			summons.map((member) => [member.code, member.regions, member.payload]),
+			[[1, [REGION.DEF], 1], [7, [REGION.ATK, REGION.DEF], (2 << 16) | 1], [8, [REGION.ATK, REGION.SET_DEF], (3 << 16) | 1], [9, undefined, (4 << 16) | 1], [10, undefined, (5 << 16) | 1]],
+			'a card listed twice is one member, at its first index, each in the regions of the positions it may take',
+		);
+		for (const raw of [{ action: 1, index: 2 }, { action: 1, index: 5 }]) roundTrip(idle, raw);
+		assert.throws(() => replyFor(prompt, { action: 1, index: 1 }), /no member/);
+	}
+	{
 		const battle = { kind: MSG.SELECT_BATTLECMD, player: 1, activatable: [], attackable: [{ ...card(4, 1, LOCATION.MZONE, 0), canDirect: true }, { ...card(5, 1, LOCATION.MZONE, 1), canDirect: false }], toM2: false, toEp: true };
 		const { prompt } = roundTrip(battle, { action: 1, index: 1 });
 		assert.deepEqual(prompt.members.map((member) => [member.verb, member.direct, member.payload]), [[VERB.attack, true, 1], [VERB.attack, false, (1 << 16) | 1], [VERB.phase, undefined, 3]]);

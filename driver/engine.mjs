@@ -217,6 +217,10 @@ export async function createEngine(instantiate, { log = defaultLog } = {}) {
 				return call(() => module._ocgapiDuelQueryCount(handle, team, location));
 			},
 
+			summonPositions({ controller, location, sequence }) {
+				return call(() => module._ocgapiDuelSummonPositions(handle, controller, location, sequence)) >>> 0;
+			},
+
 			destroy() {
 				if (!alive) return;
 				alive = false;

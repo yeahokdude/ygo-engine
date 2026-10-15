@@ -53,9 +53,15 @@ function onePerCard(cards) {
 	});
 }
 
+const regionsOf = (mask) => POSITIONS.filter(([position, , region]) => region !== null && mask & position).map(([, , region]) => region);
+
 function summonMember(resolve, card, index) {
-	const regions = POSITIONS.filter(([position, , region]) => region !== null && (card.positions ?? 0) & position).map(([, , region]) => region);
-	return cardMember(resolve, card, VERB.specialSummon, command(IDLE.SP_SUMMON, index), regions.length ? { regions } : {});
+	const regions = regionsOf(card.positions?.own ?? 0);
+	const across = regionsOf(card.positions?.across ?? 0);
+	return cardMember(resolve, card, VERB.specialSummon, command(IDLE.SP_SUMMON, index), {
+		...(regions.length ? { regions } : {}),
+		...(across.length ? { across } : {}),
+	});
 }
 
 function bitsOf(mask) {

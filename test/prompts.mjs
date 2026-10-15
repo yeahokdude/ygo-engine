@@ -108,21 +108,31 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 		const idle = {
 			kind: MSG.SELECT_IDLECMD, player: 0, summonable: [],
 			spSummonable: [
-				{ ...card(1, 0, LOCATION.HAND, 0), positions: POS.FACEUP_DEFENSE },
-				{ ...card(1, 0, LOCATION.HAND, 0), positions: POS.FACEUP_DEFENSE },
-				{ ...card(7, 0, LOCATION.EXTRA, 0), positions: POS.FACEUP },
-				{ ...card(8, 0, LOCATION.EXTRA, 1), positions: POS.FACEUP_ATTACK | POS.FACEDOWN_DEFENSE },
-				{ ...card(9, 0, LOCATION.GRAVE, 0), positions: POS.FACEDOWN_ATTACK },
+				{ ...card(1, 0, LOCATION.HAND, 0), positions: { own: POS.FACEUP_DEFENSE, across: 0 } },
+				{ ...card(1, 0, LOCATION.HAND, 0), positions: { own: POS.FACEUP_DEFENSE, across: 0 } },
+				{ ...card(7, 0, LOCATION.EXTRA, 0), positions: { own: POS.FACEUP, across: 0 } },
+				{ ...card(8, 0, LOCATION.EXTRA, 1), positions: { own: POS.FACEUP_ATTACK | POS.FACEDOWN_DEFENSE, across: 0 } },
+				{ ...card(9, 0, LOCATION.GRAVE, 0), positions: { own: POS.FACEDOWN_ATTACK, across: 0 } },
 				card(10, 0, LOCATION.REMOVED, 0),
+				{ ...card(11, 0, LOCATION.HAND, 1), positions: { own: 0, across: POS.FACEUP } },
+				{ ...card(12, 0, LOCATION.HAND, 2), positions: { own: POS.FACEUP_ATTACK, across: POS.FACEUP_DEFENSE } },
 			],
 			repositionable: [], monsterSettable: [], spellSettable: [], activatable: [], toBp: false, toEp: true, canShuffle: false,
 		};
 		const { prompt } = roundTrip(idle, { action: 1, index: 0 });
 		const summons = prompt.members.filter((member) => member.verb === VERB.specialSummon);
 		assert.deepEqual(
-			summons.map((member) => [member.code, member.regions, member.payload]),
-			[[1, [REGION.DEF], 1], [7, [REGION.ATK, REGION.DEF], (2 << 16) | 1], [8, [REGION.ATK, REGION.SET_DEF], (3 << 16) | 1], [9, undefined, (4 << 16) | 1], [10, undefined, (5 << 16) | 1]],
-			'a card listed twice is one member, at its first index, each in the regions of the positions it may take',
+			summons.map((member) => [member.code, member.regions, member.across, member.payload]),
+			[
+				[1, [REGION.DEF], undefined, 1],
+				[7, [REGION.ATK, REGION.DEF], undefined, (2 << 16) | 1],
+				[8, [REGION.ATK, REGION.SET_DEF], undefined, (3 << 16) | 1],
+				[9, undefined, undefined, (4 << 16) | 1],
+				[10, undefined, undefined, (5 << 16) | 1],
+				[11, undefined, [REGION.ATK, REGION.DEF], (6 << 16) | 1],
+				[12, [REGION.ATK], [REGION.DEF], (7 << 16) | 1],
+			],
+			'a card listed twice is one member, at its first index, each in the regions of the positions it may take on its own side and across',
 		);
 		for (const raw of [{ action: 1, index: 2 }, { action: 1, index: 5 }]) roundTrip(idle, raw);
 		assert.throws(() => replyFor(prompt, { action: 1, index: 1 }), /no member/);

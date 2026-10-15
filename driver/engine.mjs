@@ -218,7 +218,8 @@ export async function createEngine(instantiate, { log = defaultLog } = {}) {
 			},
 
 			summonPositions({ controller, location, sequence }) {
-				return call(() => module._ocgapiDuelSummonPositions(handle, controller, location, sequence)) >>> 0;
+				const sides = call(() => module._ocgapiDuelSummonPositions(handle, controller, location, sequence)) >>> 0;
+				return { own: sides & 0xff, across: (sides >>> 8) & 0xff };
 			},
 
 			destroy() {

@@ -539,24 +539,28 @@ end`;
 	const BOTH = 91;
 	const LINKED = 92;
 	const FUSED = 93;
+	const ACROSS = 94;
+	const SIDES = 95;
 	const monster = (code, type) => [code, { code, alias: 0, setcodes: [], type: TYPE.MONSTER | TYPE.EFFECT | type, level: 4, attribute: ATTRIBUTE.EARTH, race: RACE.WARRIOR, attack: 1000, defense: 1000, linkMarker: type === TYPE.LINK ? 0o40 : 0 }];
-	const rows = new Map([...CARDS, monster(DEFENSE, 0), monster(BOTH, 0), monster(LINKED, TYPE.LINK), monster(FUSED, TYPE.FUSION)]);
-	const procedure = (range, positions) => `local e=Effect.CreateEffect(c)
+	const rows = new Map([...CARDS, monster(DEFENSE, 0), monster(BOTH, 0), monster(LINKED, TYPE.LINK), monster(FUSED, TYPE.FUSION), monster(ACROSS, 0), monster(SIDES, 0)]);
+	const procedure = (range, positions, side = 0) => `local e=Effect.CreateEffect(c)
 	e:SetType(0x2)
 	e:SetCode(34)
 	e:SetRange(${range})
 	${positions === null ? '' : `e:SetProperty(0x100000)
-	e:SetTargetRange(${positions},0)`}
+	e:SetTargetRange(${positions},${side})`}
 	c:RegisterEffect(e)`;
 	const scripts = new Map([
 		[DEFENSE, [procedure(LOCATION.HAND, 4)]],
 		[BOTH, [procedure(LOCATION.HAND, 4), procedure(LOCATION.HAND, 1)]],
 		[LINKED, [procedure(LOCATION.EXTRA, null)]],
 		[FUSED, [procedure(LOCATION.EXTRA, null)]],
+		[ACROSS, [procedure(LOCATION.HAND, 4, 1)]],
+		[SIDES, [procedure(LOCATION.HAND, 1), procedure(LOCATION.HAND, 5, 1)]],
 	].map(([code, parts]) => [`c${code}.lua`, `function c${code}.initial_effect(c)\n\t${parts.join('\n\t')}\nend`]));
 	const session = createSession({ instantiate: browser, cardReader: (code) => rows.get(code) ?? null, scriptReader: (name) => scripts.get(name) ?? null });
 	const solo = client(session, [0, 1], { answers: false });
-	solo.send({ ...OPEN, decks: [{ main: [DEFENSE, BOTH, ...DECKS[0].main.slice(2)], extra: [LINKED, FUSED] }, DECKS[1]], shuffle: false });
+	solo.send({ ...OPEN, decks: [{ main: [DEFENSE, BOTH, ACROSS, SIDES, ...DECKS[0].main.slice(4)], extra: [LINKED, FUSED] }, DECKS[1]], shuffle: false });
 	const answer = async (reply) => {
 		const seen = solo.steps.length;
 		solo.send({ type: 'answer', kind: solo.steps.at(-1).prompt.kind, reply });
@@ -566,17 +570,32 @@ end`;
 	await until(solo.frames, () => solo.steps.length > 0);
 	const idle = solo.steps.at(-1).prompt;
 	const summons = idle.members.filter((member) => member.verb === VERB.specialSummon);
-	assert.deepEqual(summons.map((member) => [member.code, member.regions]).sort(([a], [b]) => a - b), [[DEFENSE, [REGION.DEF]], [BOTH, [REGION.ATK, REGION.DEF]], [LINKED, [REGION.ATK]], [FUSED, [REGION.ATK, REGION.DEF]]], 'each card once, in the positions its procedures summon it in — a Link in attack alone');
-	let asked = await answer({ shape: SHAPE.ONE_OF, member: idle.members.findIndex((member) => member.verb === VERB.specialSummon && member.code === DEFENSE) });
+	assert.deepEqual(
+		summons.map((member) => [member.code, member.regions, member.across]).sort(([a], [b]) => a - b),
+		[[DEFENSE, [REGION.DEF], undefined], [BOTH, [REGION.ATK, REGION.DEF], undefined], [LINKED, [REGION.ATK], undefined], [FUSED, [REGION.ATK, REGION.DEF], undefined], [ACROSS, undefined, [REGION.DEF]], [SIDES, [REGION.ATK], [REGION.ATK, REGION.DEF]]],
+		'each card once, in the positions its procedures summon it in on its own side and across — a Link in attack alone',
+	);
+	const summon = (code) => answer({ shape: SHAPE.ONE_OF, member: solo.steps.at(-1).prompt.members.findIndex((member) => member.verb === VERB.specialSummon && member.code === code) });
+	const placed = async () => {
+		let next = await answer({ shape: SHAPE.SUBSET, members: [0] });
+		while (next?.family === 'chain') next = await answer({ shape: SHAPE.TERMINAL, outcome: OUTCOME.DECLINE });
+		return next;
+	};
+	const field = (controller) => session.query({ location: { flags: QUERY.POSITION | QUERY.CODE, controller, location: LOCATION.MZONE } }, [0, 1]).filter((card) => card !== null).map((card) => [card.code, card.position]);
+	let asked = await summon(DEFENSE);
 	assert.equal(asked.family, 'zone', 'a summon in one position is asked its zone');
-	asked = await answer({ shape: SHAPE.SUBSET, members: [0] });
-	while (asked?.family === 'chain') asked = await answer({ shape: SHAPE.TERMINAL, outcome: OUTCOME.DECLINE });
+	asked = await placed();
 	assert.equal(asked?.family, 'idle', 'and never its position');
-	const [landed] = session.query({ location: { flags: QUERY.POSITION | QUERY.CODE, controller: 0, location: LOCATION.MZONE } }, [0, 1]).filter((card) => card !== null);
-	assert.deepEqual([landed.code, landed.position], [DEFENSE, POS.FACEUP_DEFENSE], 'it lands in the one position offered');
-	asked = await answer({ shape: SHAPE.ONE_OF, member: asked.members.findIndex((member) => member.verb === VERB.specialSummon && member.code === BOTH) });
+	assert.deepEqual(field(0), [[DEFENSE, POS.FACEUP_DEFENSE]], 'it lands in the one position offered');
+	asked = await summon(ACROSS);
+	assert.equal(asked.family, 'zone', 'a summon onto the other side is asked its zone');
+	assert.ok(asked.player === 0 && asked.members.length > 0 && asked.members.every((member) => member.payload >>> 16 === 1), 'by its summoner, among the other side\'s zones');
+	asked = await placed();
+	assert.equal(asked?.family, 'idle', 'and never its position');
+	assert.deepEqual(field(1), [[ACROSS, POS.FACEUP_DEFENSE]], 'it lands on the other side, in the one position offered');
+	asked = await summon(BOTH);
 	assert.equal(asked.family, 'option', 'a card two procedures summon is asked which');
 	session.close();
 	solo.close();
-	console.log(`summoned   ok  ${summons.length} Special Summons, each in its procedures' positions`);
+	console.log(`summoned   ok  ${summons.length} Special Summons, each in its procedures' positions and on their sides`);
 }

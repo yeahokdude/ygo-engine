@@ -53,7 +53,8 @@ const DECLARED = {
 	[HINT.NUMBER]: (value) => ({ verb: VERB.declareNumber, nums: [Number(value)] }),
 };
 
-function declarationOf(m) {
+function hintRow(m) {
+	if (m.type === HINT.CARD) return { t: TAG.SHOW, cards: [Number(m.description)] };
 	const declared = DECLARED[m.type];
 	return declared ? { t: TAG.CHAT, actor: m.player, ...declared(BigInt(m.description)), text: DECLARATION } : null;
 }
@@ -450,8 +451,8 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		[MSG.HINT]: (m, rows) => {
 			const hinted = captionHint(m);
 			if (hinted !== undefined) hint = hinted;
-			const declared = declarationOf(m);
-			if (declared !== null) rows.push(declared);
+			const row = hintRow(m);
+			if (row !== null) rows.push(row);
 		},
 		[MSG.CARD_HINT]: silent,
 		[MSG.PLAYER_HINT]: silent,

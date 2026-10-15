@@ -516,8 +516,9 @@ const played = await (async () => {
 				{ t: TAG.CHAT, actor: 0, verb: VERB.declareRace, nums: [0, 13], text: DECLARATION },
 				{ t: TAG.CHAT, actor: 1, verb: VERB.declareAttribute, nums: [5], text: DECLARATION },
 				{ t: TAG.CHAT, actor: 0, verb: VERB.declareNumber, nums: [6], text: DECLARATION },
+				{ t: TAG.SHOW, cards: [14558127] },
 			],
-			'a card, Types, an Attribute and a number declared are said to the table by their seat; no other hint is a row',
+			'a card, Types, an Attribute and a number declared are said to the table by their seat, a card shown names no seat; no other hint is a row',
 		);
 		assert.equal(translator.prompt({ kind: MSG.SELECT_YESNO, player: 0, description: 0n }).caption?.code, 2, 'the caption a select-message hint left among them still titles the next prompt');
 	}

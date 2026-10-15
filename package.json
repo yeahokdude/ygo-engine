@@ -16,7 +16,7 @@
 	"scripts": {
 		"build": "./build",
 		"constants": "node tools/constants.mjs",
-		"test": "node test/smoke.mjs && node test/driver.mjs && node test/redact.mjs && node test/session.mjs && node test/browser.mjs && node test/translate.mjs && node test/prompts.mjs && node test/declare.mjs && workerd test test/workerd/config.capnp"
+		"test": "node test/smoke.mjs && node test/driver.mjs && node test/redact.mjs && node test/session.mjs && node test/browser.mjs && node test/translate.mjs && node test/prompts.mjs && node test/trial.mjs && node test/declare.mjs && workerd test test/workerd/config.capnp"
 	},
 	"devDependencies": {
 		"workerd": "1.20260710.1"

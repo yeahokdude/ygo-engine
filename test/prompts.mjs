@@ -138,6 +138,34 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 		assert.throws(() => replyFor(prompt, { action: 1, index: 1 }), /no member/);
 	}
 	{
+		const idle = {
+			kind: MSG.SELECT_IDLECMD, player: 0, summonable: [],
+			spSummonable: [
+				{
+					...card(7, 0, LOCATION.EXTRA, 0),
+					positions: { own: POS.FACEUP, across: 0 },
+					landings: [
+						{ controller: 0, sequence: 6, positions: POS.FACEUP_ATTACK },
+						{ controller: 1, sequence: 2, positions: POS.FACEUP_DEFENSE },
+						{ controller: 1, sequence: 5, positions: POS.FACEUP_DEFENSE },
+						{ controller: 0, sequence: 3, positions: POS.FACEDOWN_ATTACK },
+					],
+				},
+				{ ...card(8, 0, LOCATION.HAND, 0), positions: { own: POS.FACEUP, across: 0 }, landings: [] },
+			],
+			repositionable: [], monsterSettable: [], spellSettable: [], activatable: [], toBp: false, toEp: true, canShuffle: false,
+		};
+		const { prompt } = roundTrip(idle, { action: 1, index: 1 });
+		assert.deepEqual(
+			prompt.members.filter((member) => member.verb === VERB.specialSummon).map((member) => [member.code, member.zones, member.regions, member.across]),
+			[
+				[7, [{ zone: seatZone(1, ZONE.MZ[2]), regions: [REGION.DEF] }, { zone: zoneOf(0, LOCATION.MZONE, 6), regions: [REGION.ATK, REGION.DEF] }], undefined, undefined],
+				[8, [], undefined, undefined],
+			],
+			'a summon tried is in the zones it landed in, a shared zone named from either side once, each with the bands of the positions it took there — none that no band draws — and nothing read off its procedures',
+		);
+	}
+	{
 		const battle = { kind: MSG.SELECT_BATTLECMD, player: 1, activatable: [], attackable: [{ ...card(4, 1, LOCATION.MZONE, 0), canDirect: true }, { ...card(5, 1, LOCATION.MZONE, 1), canDirect: false }], toM2: false, toEp: true };
 		const { prompt } = roundTrip(battle, { action: 1, index: 1 });
 		assert.deepEqual(prompt.members.map((member) => [member.verb, member.direct, member.payload]), [[VERB.attack, true, 1], [VERB.attack, false, (1 << 16) | 1], [VERB.phase, undefined, 3]]);

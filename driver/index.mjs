@@ -2,6 +2,7 @@ export * from './constants.mjs';
 export { createEngine, clockFromSeed } from './engine.mjs';
 export { advance, play, replay } from './duel.mjs';
 export { loadDecks, shuffled } from './deal.mjs';
+export { TRIAL_BUDGET, trySummons } from './trial.mjs';
 export { decodeMessages, isPrompt } from './messages.mjs';
 export { encodeResponse } from './responses.mjs';
 export { decodeQuery, decodeQueryLocation, decodeQueryField } from './queries.mjs';

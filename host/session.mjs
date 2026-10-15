@@ -1,4 +1,4 @@
-import { DUEL, DUEL_STATUS, MSG, advance, clockFromSeed, createEngine, createTranslator, encodeResponse, loadDecks, pollField, redact, redactQuery, responseFor } from '../driver/index.mjs';
+import { DUEL, DUEL_STATUS, MSG, advance, clockFromSeed, createEngine, createTranslator, encodeResponse, loadDecks, pollField, redact, redactQuery, responseFor, trySummons } from '../driver/index.mjs';
 import { conjure, conjureError } from '../driver/conjure.mjs';
 
 export const PROTOCOL = 5;
@@ -89,7 +89,7 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 				}
 				if (!batch.prompt) throw new Error('the core is waiting on nothing');
 				if (answered) decisions++;
-				pending = batch.prompt;
+				pending = trySummons(engine, duel, batch.prompt);
 				asked = at;
 				deliver(messages, pending, false);
 				return;

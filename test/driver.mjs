@@ -126,6 +126,30 @@ assert.equal(streams.browser.messages, streams.workerd.messages, 'the two entrie
 }
 
 {
+	const { engine, duel, lines } = await startDuel(browser);
+	playOut(duel, bot, { decisionCap: 30 });
+	const before = engine.snapshot();
+	const told = lines.length;
+	const tails = engine.rewinding((back) => {
+		const first = playOut(duel);
+		back();
+		assert.ok(duel.loadScript('said.lua', 'Debug.Message("said")'));
+		engine.module._malloc(8 << 20);
+		return [first, playOut(duel)];
+	});
+	assert.equal(stringify(tails[1].messages), stringify(tails[0].messages), 'rewound, the duel plays the same tail again');
+	const after = new Uint8Array(engine.memory.buffer);
+	assert.ok(after.length > before.length, 'memory only grows');
+	assert.ok(Buffer.from(after.subarray(0, before.length)).equals(Buffer.from(before)) && after.subarray(before.length).every((byte) => byte === 0), 'and is left as it was found, the pages it grew by zeroed');
+	assert.equal(lines.length, told, 'nothing is said while it runs');
+	assert.equal(stringify(playOut(duel).messages), stringify(tails[0].messages), 'and the duel plays on from where it was');
+	assert.ok(duel.loadScript('said.lua', 'Debug.Message("said")'));
+	assert.equal(lines.length, told + 1, 'the log speaks again after');
+	duel.destroy();
+	console.log(`rewinding ok  a tail of ${tails[0].messages.length} messages played twice, the engine left as it was`);
+}
+
+{
 	const { duel, lines } = await startDuel(browser);
 	assert.equal(duel.loadScript('broken.lua', 'this is not lua'), false);
 	assert.ok(lines.some((line) => line.channel === 'core' && line.type === LOG_TYPE.ERROR && /broken\.lua/.test(line.text)), stringify(lines));

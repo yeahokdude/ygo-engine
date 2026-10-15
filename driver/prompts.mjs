@@ -56,12 +56,26 @@ function onePerCard(cards) {
 const regionsOf = (mask) => POSITIONS.filter(([position, , region]) => region !== null && mask & position).map(([, , region]) => region);
 
 function summonMember(resolve, card, index) {
+	const payload = command(IDLE.SP_SUMMON, index);
+	if (card.landings) return cardMember(resolve, card, VERB.specialSummon, payload, { zones: zonesOf(resolve, card.landings) });
 	const regions = regionsOf(card.positions?.own ?? 0);
 	const across = regionsOf(card.positions?.across ?? 0);
-	return cardMember(resolve, card, VERB.specialSummon, command(IDLE.SP_SUMMON, index), {
+	return cardMember(resolve, card, VERB.specialSummon, payload, {
 		...(regions.length ? { regions } : {}),
 		...(across.length ? { across } : {}),
 	});
+}
+
+function zonesOf(resolve, landings) {
+	const positions = new Map();
+	for (const { controller, sequence, positions: taken } of landings) {
+		const zone = resolve.zone(controller, LOCATION.MZONE, sequence);
+		positions.set(zone, (positions.get(zone) ?? 0) | taken);
+	}
+	return [...positions]
+		.sort(([a], [b]) => a - b)
+		.map(([zone, taken]) => ({ zone, regions: regionsOf(taken) }))
+		.filter(({ regions }) => regions.length > 0);
 }
 
 function bitsOf(mask) {

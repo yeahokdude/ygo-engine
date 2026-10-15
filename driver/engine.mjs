@@ -9,12 +9,16 @@ const PAGE = 65_536;
 
 export async function createEngine(instantiate, { log = defaultLog } = {}) {
 	const duels = new Map();
+	let muted = 0;
+	const say = (sink, entry) => {
+		if (muted === 0) sink(entry);
+	};
 	const module = await instantiate({
-		print: (text) => log({ channel: 'stdout', text }),
-		printErr: (text) => log({ channel: 'stderr', text }),
+		print: (text) => say(log, { channel: 'stdout', text }),
+		printErr: (text) => say(log, { channel: 'stderr', text }),
 		handleDataReader: (payload, code, pointer) => duels.get(payload)?.readCard(code, pointer),
 		handleScriptReader: (payload, _duel, name) => duels.get(payload)?.readScript(name) ?? null,
-		handleLogHandler: (payload, text, type) => (duels.get(payload)?.log ?? log)({ channel: 'core', type, text }),
+		handleLogHandler: (payload, text, type) => say(duels.get(payload)?.log ?? log, { channel: 'core', type, text }),
 	});
 	const heap = new Heap(module.wasmMemory);
 	let nextPayload = 1;
@@ -52,6 +56,18 @@ export async function createEngine(instantiate, { log = defaultLog } = {}) {
 				if (module.wasmMemory.buffer.byteLength < bytes.length) throw new Error('restore: memory did not grow to the snapshot');
 			}
 			heap.bytes.set(bytes);
+			heap.bytes.fill(0, bytes.length);
+		},
+
+		rewinding(fn) {
+			const start = engine.snapshot();
+			muted++;
+			try {
+				return fn(() => engine.restore(start));
+			} finally {
+				engine.restore(start);
+				muted--;
+			}
 		},
 
 		createDuel({ seed, flags, team1, team2, cardReader, scriptReader, clock, log: duelLog = log }) {

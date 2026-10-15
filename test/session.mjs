@@ -570,10 +570,19 @@ end`;
 	await until(solo.frames, () => solo.steps.length > 0);
 	const idle = solo.steps.at(-1).prompt;
 	const summons = idle.members.filter((member) => member.verb === VERB.specialSummon);
+	const row = (seat) => ZONE.MZ.map((slot) => seatZone(seat, slot));
+	const zones = (ids, regions) => ids.map((zone) => ({ zone, regions }));
 	assert.deepEqual(
-		summons.map((member) => [member.code, member.regions, member.across]).sort(([a], [b]) => a - b),
-		[[DEFENSE, [REGION.DEF], undefined], [BOTH, [REGION.ATK, REGION.DEF], undefined], [LINKED, [REGION.ATK], undefined], [FUSED, [REGION.ATK, REGION.DEF], undefined], [ACROSS, undefined, [REGION.DEF]], [SIDES, [REGION.ATK], [REGION.ATK, REGION.DEF]]],
-		'each card once, in the positions its procedures summon it in on its own side and across — a Link in attack alone',
+		summons.map((member) => [member.code, member.zones, member.regions, member.across]).sort(([a], [b]) => a - b),
+		[
+			[DEFENSE, zones(row(0), [REGION.DEF]), undefined, undefined],
+			[BOTH, zones(row(0), [REGION.ATK, REGION.DEF]), undefined, undefined],
+			[LINKED, zones(EMZ, [REGION.ATK]), undefined, undefined],
+			[FUSED, zones([...row(0), ...EMZ], [REGION.ATK, REGION.DEF]), undefined, undefined],
+			[ACROSS, zones(row(1), [REGION.DEF]), undefined, undefined],
+			[SIDES, [...zones(row(0), [REGION.ATK]), ...zones(row(1), [REGION.ATK, REGION.DEF])], undefined, undefined],
+		],
+		'each card once, in the zones its summon was tried into and the positions it takes in each — a Link in attack alone, in a shared zone',
 	);
 	const summon = (code) => answer({ shape: SHAPE.ONE_OF, member: solo.steps.at(-1).prompt.members.findIndex((member) => member.verb === VERB.specialSummon && member.code === code) });
 	const placed = async () => {
@@ -597,5 +606,5 @@ end`;
 	assert.equal(asked.family, 'option', 'a card two procedures summon is asked which');
 	session.close();
 	solo.close();
-	console.log(`summoned   ok  ${summons.length} Special Summons, each in its procedures' positions and on their sides`);
+	console.log(`summoned   ok  ${summons.length} Special Summons, each in the zones and positions it was tried into`);
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { ATTRIBUTE, DUEL, DUEL_STATUS, HINT, LOCATION, MSG, PHASE, POS, QUERY, RACE, STATUS, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
+import { ATTRIBUTE, CHINT, DUEL, DUEL_STATUS, HINT, LOCATION, MSG, PHASE, POS, QUERY, RACE, STATUS, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
 import { conjure, conjureError, placeOf } from '../driver/conjure.mjs';
 import { unruledKinds } from '../driver/translate.mjs';
 import { DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
@@ -521,6 +521,36 @@ const played = await (async () => {
 			'a card, Types, an Attribute and a number declared are said to the table by their seat, a card shown names no seat; no other hint is a row',
 		);
 		assert.equal(translator.prompt({ kind: MSG.SELECT_YESNO, player: 0, description: 0n }).caption?.code, 2, 'the caption a select-message hint left among them still titles the next prompt');
+	}
+
+	{
+		const { translator } = fresh();
+		const lies = at(0, LOCATION.SZONE, 1, POS.FACEUP);
+		translator.translate([{ kind: MSG.DRAW, player: 0, cards: [{ code: 1, position: POS.FACEDOWN }] }, move(1, at(0, LOCATION.HAND, 0, POS.FACEDOWN), lies, 0)]);
+		const held = (type, value) => ({ kind: MSG.CARD_HINT, card: lies, type, value });
+		assert.deepEqual(
+			translator.translate([
+				held(CHINT.TURN, 2n),
+				held(CHINT.CARD, 14558127n),
+				held(CHINT.RACE, (1n << 13n) | 1n),
+				held(CHINT.ATTRIBUTE, 32n),
+				held(CHINT.NUMBER, 3000n),
+				held(CHINT.TURN, 0n),
+				held(CHINT.CARD, 0n),
+				held(CHINT.DESC_ADD, (1n << 20n) | 2n),
+				held(CHINT.DESC_REMOVE, (1n << 20n) | 2n),
+			]),
+			[
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.TURN, 2] },
+				{ t: TAG.HINT, insts: [H.top0], cards: [14558127], nums: [CHINT.CARD] },
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.RACE, 0, 13] },
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.ATTRIBUTE, 5] },
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.NUMBER, 3000] },
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.TURN] },
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.CARD] },
+			],
+			'what a lasting effect hangs on a card is a row on its handle, a card by its code and a Type or an Attribute by its place; a zero holds nothing, and an effect described on the card is no row',
+		);
 	}
 
 	{

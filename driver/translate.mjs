@@ -1,4 +1,4 @@
-import { HINT, LOCATION, MSG, MSG_NAME, PHASE, POS, QUERY, REASON, STATUS } from './constants.mjs';
+import { CHINT, HINT, LOCATION, MSG, MSG_NAME, PHASE, POS, QUERY, REASON, STATUS } from './constants.mjs';
 import { DECODED_KINDS, isPrompt } from './messages.mjs';
 import { bitsOf, captionHint, translatePrompt } from './prompts.mjs';
 import { redactQuery } from './redact.mjs';
@@ -51,6 +51,14 @@ const DECLARED = {
 	[HINT.RACE]: (value) => ({ verb: VERB.declareRace, nums: bitsOf(value) }),
 	[HINT.ATTRIB]: (value) => ({ verb: VERB.declareAttribute, nums: bitsOf(value) }),
 	[HINT.NUMBER]: (value) => ({ verb: VERB.declareNumber, nums: [Number(value)] }),
+};
+
+const HELD = {
+	[CHINT.TURN]: (value) => ({ nums: value ? [Number(value)] : [] }),
+	[CHINT.CARD]: (value) => (value ? { cards: [Number(value)] } : {}),
+	[CHINT.RACE]: (value) => ({ nums: bitsOf(value) }),
+	[CHINT.ATTRIBUTE]: (value) => ({ nums: bitsOf(value) }),
+	[CHINT.NUMBER]: (value) => ({ nums: value ? [Number(value)] : [] }),
 };
 
 function hintRow(m) {
@@ -454,7 +462,12 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 			const row = hintRow(m);
 			if (row !== null) rows.push(row);
 		},
-		[MSG.CARD_HINT]: silent,
+		[MSG.CARD_HINT]: (m, rows) => {
+			const held = HELD[m.type];
+			if (!held) return;
+			const { cards, nums = [] } = held(BigInt(m.value));
+			rows.push({ t: TAG.HINT, insts: [at(m.card)], ...(cards ? { cards } : {}), nums: [m.type, ...nums] });
+		},
 		[MSG.PLAYER_HINT]: silent,
 		[MSG.AI_NAME]: silent,
 		[MSG.SHOW_HINT]: silent,

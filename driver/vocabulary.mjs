@@ -22,6 +22,7 @@ export const TAG = Object.freeze({
 	STATS: 60,
 	CHAIN: 61,
 	SHOW: 62,
+	HINT: 63,
 });
 
 export const CHAIN = Object.freeze({ LINK: 1, SOLVING: 2, SOLVED: 3, NEGATED: 4, DISABLED: 5, END: 6 });

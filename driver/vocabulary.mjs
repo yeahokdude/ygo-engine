@@ -68,6 +68,7 @@ export const VERB = Object.freeze({
 	shuffleHand: 52,
 	rps: 53,
 	setAttack: 54,
+	flipSummon: 68,
 });
 
 export const REGION = Object.freeze({

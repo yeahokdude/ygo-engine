@@ -212,6 +212,53 @@ const played = await (async () => {
 }
 
 {
+	const engine = await createEngine(browser, { log: () => {} });
+	const duel = engine.createDuel({ seed: SEED, flags: DUEL.MODE_MR5, team1: TEAM, team2: TEAM, cardReader, scriptReader: () => null, clock: clockFromSeed(SEED) });
+	const orders = loadDecks(duel, DECKS, { seed: SEED });
+	duel.start();
+	const views = { both: [0, 1], across: [1] };
+	const translators = Object.fromEntries(Object.entries(views).map(([name, seats]) => [name, createTranslator({ seats })]));
+	for (const translator of Object.values(translators)) translator.open(orders);
+	const rows = { both: [], across: [] };
+	const messages = [];
+	let turned = null;
+	let audits = 0;
+	const result = play(
+		duel,
+		(prompt) => {
+			assert.deepEqual(translators.both.audit(duel), [], `the shadow drifted from the core before decision ${audits++}`);
+			if (prompt.kind !== MSG.SELECT_IDLECMD) return bot(prompt);
+			if (turned !== null) return undefined;
+			if (prompt.player !== 0) return { action: 7 };
+			if (prompt.repositionable.length) {
+				turned = prompt.repositionable[0];
+				return { action: 2, index: 0 };
+			}
+			return prompt.monsterSettable.length ? { action: 3, index: 0 } : { action: 7 };
+		},
+		{
+			onBatch: (batch) => {
+				messages.push(...batch.messages);
+				for (const [name, seats] of Object.entries(views)) rows[name].push(...translators[name].translate(batch.messages.map((message) => redact(message, seats)).filter((message) => message !== null)));
+			},
+		},
+	);
+	assert.equal(result.reason, 'unanswerable');
+	assert.ok(turned !== null, 'the set monster was offered its Flip Summon');
+	assert.ok(messages.some((message) => message.kind === MSG.FLIPSUMMONING));
+	assert.ok(!messages.some((message) => message.kind === MSG.POS_CHANGE), 'the core turns a Flip Summon over with no position change of its own');
+	const card = translators.both.board()[0].mzone[turned.sequence];
+	assert.equal(card.position, POS.FACEUP_ATTACK);
+	const flipped = { t: TAG.FLIP, actor: 0, insts: [card.inst], cards: [turned.code], flags: FLAG.FACE_PRESENT | FLAG.FACE_UP | FLAG.POSITION_PRESENT, verb: VERB.flipSummon };
+	assert.deepEqual(rows.both.filter((row) => row.t === TAG.FLIP), [flipped]);
+	assert.deepEqual(rows.across.filter((row) => row.t === TAG.FLIP), [flipped], 'the seat across learns the card it turns up');
+	assert.equal(rows.across.find((row) => row.t === TAG.MOVE && row.verb === VERB.setMonster).cards[0], 0, 'which it was not shown as it was Set');
+	assert.deepEqual(translators.both.audit(duel), []);
+	duel.destroy();
+	console.log(`flip       ok  a Set monster Flip Summoned, audited at ${audits} boundaries`);
+}
+
+{
 	const at = (controller, location, sequence, position = POS.FACEUP_ATTACK) => ({ controller, location, sequence, position });
 	const move = (code, from, to, reason = 0) => ({ kind: MSG.MOVE, code, from, to, reason });
 	const nowhere = at(0, 0, 0, 0);

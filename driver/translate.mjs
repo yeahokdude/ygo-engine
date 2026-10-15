@@ -292,6 +292,12 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 			rows.push({ t: TAG.FLIP, actor: m.controller, insts: [inst], cards: [m.code], flags, verb });
 		},
 
+		[MSG.FLIPSUMMONING]: (m, rows) => {
+			const inst = at(m);
+			learn(inst, m.code, m.position);
+			rows.push({ t: TAG.FLIP, actor: m.controller, insts: [inst], cards: [m.code], flags: landing(zoneAt(m), m.position), verb: VERB.flipSummon });
+		},
+
 		[MSG.SWAP]: (m, rows) => {
 			const first = at(m.first);
 			const second = at(m.second);
@@ -421,7 +427,6 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		[MSG.SUMMONED]: silent,
 		[MSG.SPSUMMONING]: silent,
 		[MSG.SPSUMMONED]: silent,
-		[MSG.FLIPSUMMONING]: silent,
 		[MSG.FLIPSUMMONED]: silent,
 		[MSG.CHAINED]: silent,
 		[MSG.BATTLE]: silent,

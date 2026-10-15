@@ -78,7 +78,7 @@ function zonesOf(resolve, landings) {
 		.filter(({ regions }) => regions.length > 0);
 }
 
-function bitsOf(mask) {
+export function bitsOf(mask) {
 	const value = BigInt(mask);
 	const bits = [];
 	for (let bit = 0n; bit < 64n; bit++) {

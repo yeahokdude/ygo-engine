@@ -1,8 +1,8 @@
-import { LOCATION, MSG, MSG_NAME, PHASE, POS, QUERY, REASON, STATUS } from './constants.mjs';
+import { HINT, LOCATION, MSG, MSG_NAME, PHASE, POS, QUERY, REASON, STATUS } from './constants.mjs';
 import { DECODED_KINDS, isPrompt } from './messages.mjs';
-import { captionHint, translatePrompt } from './prompts.mjs';
+import { bitsOf, captionHint, translatePrompt } from './prompts.mjs';
 import { redactQuery } from './redact.mjs';
-import { AUDIENCE, CHAIN, EMZ, FLAG, PACK_PHASE, TAG, VERB, ZONE, audienceRef, seatZone, zoneRef, zoneSpec } from './vocabulary.mjs';
+import { AUDIENCE, CHAIN, DECLARATION, EMZ, FLAG, PACK_PHASE, TAG, VERB, ZONE, audienceRef, seatZone, zoneRef, zoneSpec } from './vocabulary.mjs';
 
 const LIST_OF = { [LOCATION.DECK]: 'deck', [LOCATION.HAND]: 'hand', [LOCATION.GRAVE]: 'grave', [LOCATION.REMOVED]: 'removed', [LOCATION.EXTRA]: 'extra' };
 const ZONE_OF = { [LOCATION.DECK]: ZONE.DECK, [LOCATION.HAND]: ZONE.HAND, [LOCATION.GRAVE]: ZONE.GY, [LOCATION.REMOVED]: ZONE.BANISH, [LOCATION.EXTRA]: ZONE.EXTRA };
@@ -44,6 +44,18 @@ function landing(zone, position) {
 	if (spec.face === 'stated') flags |= FLAG.FACE_PRESENT | (position & POS.FACEUP ? FLAG.FACE_UP : 0);
 	if (spec.kind === 'field') flags |= FLAG.POSITION_PRESENT | (spec.monster && position & POS.DEFENSE ? FLAG.POSITION_DEF : 0);
 	return flags;
+}
+
+const DECLARED = {
+	[HINT.CODE]: (value) => ({ verb: VERB.declare, cards: [Number(value)] }),
+	[HINT.RACE]: (value) => ({ verb: VERB.declareRace, nums: bitsOf(value) }),
+	[HINT.ATTRIB]: (value) => ({ verb: VERB.declareAttribute, nums: bitsOf(value) }),
+	[HINT.NUMBER]: (value) => ({ verb: VERB.declareNumber, nums: [Number(value)] }),
+};
+
+function declarationOf(m) {
+	const declared = DECLARED[m.type];
+	return declared ? { t: TAG.CHAT, actor: m.player, ...declared(BigInt(m.description)), text: DECLARATION } : null;
 }
 
 function moveVerb(from, location, sequence, position, reason) {
@@ -435,9 +447,11 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		[MSG.DAMAGE_STEP_END]: silent,
 		[MSG.MISSED_EFFECT]: silent,
 		[MSG.FIELD_DISABLED]: silent,
-		[MSG.HINT]: (m) => {
+		[MSG.HINT]: (m, rows) => {
 			const hinted = captionHint(m);
 			if (hinted !== undefined) hint = hinted;
+			const declared = declarationOf(m);
+			if (declared !== null) rows.push(declared);
 		},
 		[MSG.CARD_HINT]: silent,
 		[MSG.PLAYER_HINT]: silent,

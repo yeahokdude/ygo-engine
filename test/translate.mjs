@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 
-import { ATTRIBUTE, DUEL, DUEL_STATUS, LOCATION, MSG, PHASE, POS, QUERY, RACE, STATUS, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
+import { ATTRIBUTE, DUEL, DUEL_STATUS, HINT, LOCATION, MSG, PHASE, POS, QUERY, RACE, STATUS, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
 import { conjure, conjureError, placeOf } from '../driver/conjure.mjs';
 import { unruledKinds } from '../driver/translate.mjs';
 import { DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
 
-const { AUDIENCE, CHAIN, EMZ, FLAG, PACK_PHASE, TAG, VERB, ZONE, audienceRef, seatZone, zoneRef } = vocabulary;
+const { AUDIENCE, CHAIN, DECLARATION, EMZ, FLAG, PACK_PHASE, TAG, VERB, ZONE, audienceRef, seatZone, zoneRef } = vocabulary;
 const browser = await browserEntry();
 
 assert.deepEqual(unruledKinds(), []);
@@ -494,6 +494,32 @@ const played = await (async () => {
 		assert.deepEqual(translator.stats(field({ 4: queried(POS.FACEUP_ATTACK, 1500, 1000, { link: 2 }) }, { 1: forbidden })), [{ t: TAG.STATS, insts: [H.top0], nums: [1500, 1000, 2, 0] }], 'back on the field, the same numbers are a baseline again');
 		assert.throws(() => translator.stats(field({ 0: queried(POS.FACEUP_ATTACK, 1, 1) })), /no card at 0\/MZONE\/0 to carry stats/, 'a card the shadow does not hold is a drift');
 		assert.throws(() => createTranslator({ seats: [0] }).stats(field()), /not open/);
+	}
+
+	{
+		const { translator } = fresh();
+		const hint = (type, player, description) => ({ kind: MSG.HINT, type, player, description });
+		const declared = translator.translate([
+			hint(HINT.CODE, 1, 14558127n),
+			hint(HINT.RACE, 0, (1n << 13n) | 1n),
+			hint(HINT.ATTRIB, 1, 32n),
+			hint(HINT.NUMBER, 0, 6n),
+			hint(HINT.CARD, 1, 14558127n),
+			hint(HINT.OPSELECTED, 0, 5n),
+			hint(HINT.SELECTMSG, 0, (2n << 20n) | 1n),
+			hint(HINT.ZONE, 1, 4n),
+		]);
+		assert.deepEqual(
+			declared,
+			[
+				{ t: TAG.CHAT, actor: 1, verb: VERB.declare, cards: [14558127], text: DECLARATION },
+				{ t: TAG.CHAT, actor: 0, verb: VERB.declareRace, nums: [0, 13], text: DECLARATION },
+				{ t: TAG.CHAT, actor: 1, verb: VERB.declareAttribute, nums: [5], text: DECLARATION },
+				{ t: TAG.CHAT, actor: 0, verb: VERB.declareNumber, nums: [6], text: DECLARATION },
+			],
+			'a card, Types, an Attribute and a number declared are said to the table by their seat; no other hint is a row',
+		);
+		assert.equal(translator.prompt({ kind: MSG.SELECT_YESNO, player: 0, description: 0n }).caption?.code, 2, 'the caption a select-message hint left among them still titles the next prompt');
 	}
 
 	{

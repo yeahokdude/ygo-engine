@@ -18,6 +18,7 @@ export const TAG = Object.freeze({
 	PHASE: 43,
 	TURN: 45,
 	THROW: 49,
+	CHAT: 50,
 	STATS: 60,
 	CHAIN: 61,
 });
@@ -69,7 +70,12 @@ export const VERB = Object.freeze({
 	rps: 53,
 	setAttack: 54,
 	flipSummon: 68,
+	declareRace: 69,
+	declareAttribute: 70,
+	declareNumber: 71,
 });
+
+export const DECLARATION = '\u{1f5e3}\u{fe0f}\u{1f4e2}';
 
 export const REGION = Object.freeze({
 	ATK: 1,

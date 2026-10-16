@@ -1,9 +1,16 @@
-import { DUEL_STATUS, MSG } from './constants.mjs';
+import { DUEL_STATUS, MSG, QUERY } from './constants.mjs';
 import { isPrompt } from './messages.mjs';
+
+const LANDED = QUERY.CODE | QUERY.POSITION | QUERY.OWNER | QUERY.IS_PUBLIC | QUERY.IS_HIDDEN;
+
+function landed(duel, message) {
+	const slots = duel.queryLocation({ controller: message.from[0].controller, location: message.location, flags: LANDED });
+	return { ...message, landed: message.from.map(({ sequence }) => slots[sequence] ?? null) };
+}
 
 export function advance(duel) {
 	const status = duel.process();
-	const messages = duel.messages();
+	const messages = duel.messages().map((message) => (message.kind === MSG.SHUFFLE_SET_CARD ? landed(duel, message) : message));
 	let win = null;
 	let retry = false;
 	for (const message of messages) {

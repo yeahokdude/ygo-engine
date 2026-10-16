@@ -288,6 +288,39 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		return owners.some((owner) => owner !== player) ? owners : [];
 	}
 
+	function slotOf(inst) {
+		for (const [controller, seat] of table.entries()) {
+			for (const [location, slots] of [[LOCATION.MZONE, seat.mzone], [LOCATION.SZONE, seat.szone]]) {
+				const sequence = slots.indexOf(inst);
+				if (sequence !== -1) return { controller, location, sequence };
+			}
+		}
+		return fail(`handle ${inst} is in no field slot`);
+	}
+
+	function swapPlaces(inst, to, rows) {
+		const other = at(to);
+		if (other === inst) return;
+		const from = slotOf(inst);
+		lift(inst);
+		lift(other);
+		place(inst, to);
+		place(other, from);
+		rows.push({ t: TAG.SWAP, insts: [inst, other] });
+	}
+
+	function remint(inst, where, landed) {
+		const { position } = cards.get(inst);
+		const units = materials.get(inst);
+		materials.delete(inst);
+		lift(inst);
+		retire(inst);
+		const fresh = mint(landed.code ?? 0, position, landed.owner);
+		place(fresh, where);
+		if (units) materials.set(fresh, units);
+		return fresh;
+	}
+
 	const silent = () => {};
 	const unsupported = (message) => fail(`no rule for ${MSG_NAME[message.kind]}: not a duel this driver hosts`);
 
@@ -387,14 +420,17 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		},
 
 		[MSG.SHUFFLE_SET_CARD]: (m, rows) => {
-			const insts = m.from.map(at);
-			insts.forEach(lift);
-			insts.forEach((inst, i) => {
-				place(inst, m.to[i]);
-				learn(inst, 0, m.to[i].position);
-				const zone = zoneAt(m.to[i]);
-				rows.push({ t: TAG.MOVE, insts: [inst], cards: [0], from: zoneRef(zoneAt(m.from[i])), to: zoneRef(zone), flags: landing(zone, m.to[i].position) });
+			const landed = (m.landed ?? fail('a set-card shuffle with no reading of where its cards landed')).map((card, i) => card ?? fail(`no card landed at ${describe(m.from[i])}`));
+			const { controller } = m.from[0];
+			const shuffled = m.from.map(at);
+			m.to.forEach((to, i) => {
+				if (to.location !== 0) swapPlaces(shuffled[i], to, rows);
 			});
+			const insts = m.from.map(at);
+			const fresh = insts.map((inst, i) => remint(inst, m.from[i], landed[i]));
+			const owners = fresh.map((inst) => cards.get(inst).owner);
+			const codes = fresh.map(codeOf);
+			rows.push({ t: TAG.SHUFFLE, actor: controller, insts, nums: [insts.length, ...(owners.some((owner) => owner !== controller) ? owners : [])], ...(codes.some(Boolean) ? { cards: codes } : {}) });
 		},
 
 		[MSG.SHUFFLE_DECK]: (m, rows) => {

@@ -535,6 +535,43 @@ end`;
 }
 
 {
+	const SET_TWO = 82;
+	const spell = (code) => [code, { code, alias: 0, setcodes: [], type: TYPE.SPELL, level: 0, attribute: 0, race: 0, attack: 0, defense: 0 }];
+	const rows = new Map([...CARDS, spell(SET_TWO), spell(83), spell(84)]);
+	const script = `function c${SET_TWO}.initial_effect(c)
+	local e=Effect.CreateEffect(c)
+	e:SetType(0x10)
+	e:SetCode(1002)
+	e:SetOperation(function(e,tp) Duel.SSet(tp,Duel.GetMatchingGroup(function(c) return c:GetCode()>=83 end,tp,0x1,0,nil)) end)
+	c:RegisterEffect(e)
+end`;
+	const deck = { main: [SET_TWO, ...DECKS[0].main.slice(1, 10), 83, 84, ...DECKS[0].main.slice(12)], extra: [] };
+	const session = createSession({ instantiate: browser, cardReader: (code) => rows.get(code) ?? null, scriptReader: (name) => (name === `c${SET_TWO}.lua` ? script : null) });
+	const solo = client(session, [0, 1], { answers: false });
+	const answer = async (reply) => {
+		const seen = solo.steps.length;
+		solo.send({ type: 'answer', kind: solo.steps.at(-1).prompt.kind, reply });
+		await until(solo.frames, () => solo.steps.length > seen);
+	};
+	solo.send({ ...OPEN, decks: [deck, DECKS[1]], shuffle: false });
+	await until(solo.frames, () => solo.steps.length > 0);
+	const idle = solo.steps.at(-1).prompt;
+	await answer({ shape: SHAPE.ONE_OF, member: idle.members.findIndex((member) => member.verb === VERB.activate && member.code === SET_TWO) });
+	while (solo.steps.at(-1).prompt?.family !== 'idle') await answer(passOn(solo.steps.at(-1).prompt));
+	const shuffles = rowsOf(solo.steps).filter((row) => row.t === TAG.SHUFFLE && row.insts);
+	assert.equal(shuffles.length, 1, 'the two cards Set at once are shuffled');
+	assert.deepEqual([...shuffles[0].cards].sort((a, b) => a - b), [83, 84], 'and named to the seat holding them');
+	const seen = solo.steps.length;
+	solo.send({ type: 'create', seat: 0, code: 41, zone: seatZone(0, ZONE.HAND), flags: 0 });
+	await until(solo.frames, () => solo.steps.length > seen || solo.frames.some((frame) => frame.type === 'end'));
+	assert.ok(!solo.frames.some((frame) => frame.type === 'end'), 'a card made after it repeats the reading of where they landed');
+	assert.equal(solo.steps.at(-1).rows[0].t, TAG.CREATE);
+	session.close();
+	solo.close();
+	console.log('set cards  ok  a group Set shuffled, then a card made past it');
+}
+
+{
 	const DEFENSE = 90;
 	const BOTH = 91;
 	const LINKED = 92;

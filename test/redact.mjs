@@ -88,6 +88,13 @@ const withheld = (message, seats) => assert.equal(redact(message, seats), null, 
 	passes(shuffle, SEAT_1);
 	assert.deepEqual(redact(shuffle, SEAT_0).codes, [0, 0, 0]);
 	assert.deepEqual(redact({ ...shuffle, kind: MSG.SHUFFLE_EXTRA }, GALLERY).codes, [0, 0, 0]);
+	const set = (code, extra = {}) => ({ code, position: POS.FACEDOWN, owner: 1, ...extra });
+	const shuffled = { kind: MSG.SHUFFLE_SET_CARD, location: LOCATION.SZONE, from: [at(1, LOCATION.SZONE, 0, POS.FACEDOWN), at(1, LOCATION.SZONE, 2, POS.FACEDOWN)], to: [at(0, 0, 0, 0), at(0, 0, 0, 0)], landed: [set(11), set(22)] };
+	passes(shuffled, SEAT_1);
+	passes(shuffled, BOTH);
+	for (const seats of [SEAT_0, GALLERY]) assert.deepEqual(redact(shuffled, seats).landed, [{ position: POS.FACEDOWN, owner: 1 }, { position: POS.FACEDOWN, owner: 1 }], 'a Set card is named to its controller alone, its owner to everyone');
+	assert.equal(redact({ ...shuffled, landed: [set(11, { isHidden: true }), set(22)] }, SEAT_1).landed[0].code, undefined, 'a hidden one to nobody');
+	passes({ ...shuffled, landed: undefined }, SEAT_0);
 	const swap = { kind: MSG.TAG_SWAP, player: 0, deckCount: 30, extraPendulumCount: 0, deckTop: 0, hand: [{ code: 11, position: POS.FACEDOWN }], extra: [{ code: 22, position: POS.FACEDOWN }, { code: 33, position: POS.FACEUP }] };
 	passes(swap, SEAT_0);
 	const swapped = redact(swap, SEAT_1);

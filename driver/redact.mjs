@@ -42,6 +42,11 @@ const RULES = {
 	[MSG.SHUFFLE_HAND]: (message, seats) => (holds(seats, message.player) ? message : { ...message, codes: message.codes.map(() => 0) }),
 	[MSG.SHUFFLE_EXTRA]: (message, seats) => (holds(seats, message.player) ? message : { ...message, codes: message.codes.map(() => 0) }),
 	[MSG.TAG_SWAP]: (message, seats) => ownersView(ownersView(message, 'hand', seats), 'extra', seats),
+	[MSG.SHUFFLE_SET_CARD]: (message, seats) => {
+		if (!message.landed) return message;
+		const landed = message.landed.map((card, i) => redactQuery(card, message.from[i].controller, seats));
+		return landed.every((card, i) => card === message.landed[i]) ? message : { ...message, landed };
+	},
 
 	[MSG.MOVE]: (message, seats) => {
 		const { to } = message;

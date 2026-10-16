@@ -460,6 +460,18 @@ const played = await (async () => {
 
 	{
 		const { translator } = fresh();
+		const disabled = (mask) => translator.translate([{ kind: MSG.FIELD_DISABLED, mask: mask >>> 0 }]);
+		const seat1 = (bits) => bits << 16;
+		assert.deepEqual(disabled((1 << 2) | (1 << 9) | (1 << 13) | seat1(1 << 4)), [{ t: TAG.LOCK, nums: [seatZone(0, ZONE.MZ[2]), seatZone(0, ZONE.ST[1]), seatZone(0, ZONE.FIELD), seatZone(1, ZONE.MZ[4])] }]);
+		assert.deepEqual(disabled((1 << 5) | seat1(1 << 6)), [{ t: TAG.LOCK, nums: [EMZ[0]] }], 'a shared zone is locked from both seats at once, and is one zone');
+		assert.deepEqual(disabled((1 << 5) | seat1(1 << 6) | (1 << 7) | (1 << 14) | (1 << 15)), [], 'a bit naming no zone of the field changes no zone, and an unchanged set is no row');
+		assert.deepEqual(disabled((1 << 6) | seat1(1 << 5) | seat1(1 << 8)), [{ t: TAG.LOCK, nums: [seatZone(1, ZONE.ST[0]), EMZ[1]] }]);
+		assert.deepEqual(disabled(0), [{ t: TAG.LOCK }], 'every zone freed');
+		assert.deepEqual(disabled(0), []);
+	}
+
+	{
+		const { translator } = fresh();
 		const queried = (position, attack, defense, { level = 0, rank = 0, link = 0, status = 0, isHidden = false } = {}) => ({ position, attack, defense, level, rank, link: { rating: link, marker: 0 }, status, isHidden });
 		const slots = (length, filled) => Array.from({ length }, (_, index) => filled[index] ?? null);
 		const field = (m0 = {}, s0 = {}, m1 = {}, s1 = {}) => [{ mzone: slots(7, m0), szone: slots(8, s0) }, { mzone: slots(7, m1), szone: slots(8, s1) }];

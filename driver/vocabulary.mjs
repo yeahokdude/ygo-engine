@@ -8,6 +8,7 @@ export const TAG = Object.freeze({
 	SWAP: 12,
 	FLIP: 13,
 	COUNTER: 15,
+	LOCK: 16,
 	REVEAL: 20,
 	ACTIVATE: 30,
 	TARGET: 31,

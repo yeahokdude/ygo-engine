@@ -26,6 +26,19 @@ const DESCRIPTION_SHIFT = 20n;
 const DESCRIPTION_MASK = (1n << DESCRIPTION_SHIFT) - 1n;
 const textOf = (description) => [Number(description >> DESCRIPTION_SHIFT), Number(description & DESCRIPTION_MASK)];
 
+const LOCK_BITS = [
+	...[0, 1, 2, 3, 4, 5, 6].map((sequence) => [sequence, LOCATION.MZONE, sequence]),
+	...[0, 1, 2, 3, 4, 5].map((sequence) => [8 + sequence, LOCATION.SZONE, sequence]),
+];
+
+function lockedZones(mask) {
+	const zones = new Set();
+	for (const player of [0, 1]) {
+		for (const [bit, location, sequence] of LOCK_BITS) if ((mask >>> (player * 16 + bit)) & 1) zones.add(zoneOf(player, location, sequence));
+	}
+	return [...zones].sort((a, b) => a - b);
+}
+
 export function zoneOf(controller, location, sequence) {
 	if (location === LOCATION.MZONE) {
 		if (sequence < 5) return seatZone(controller, ZONE.MZ[sequence]);
@@ -119,6 +132,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 	let opened = false;
 	let hint = null;
 	let consumed = null;
+	let locked = [];
 	const written = new Map();
 	const described = new Map();
 
@@ -469,7 +483,12 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		[MSG.DAMAGE_STEP_START]: silent,
 		[MSG.DAMAGE_STEP_END]: silent,
 		[MSG.MISSED_EFFECT]: silent,
-		[MSG.FIELD_DISABLED]: silent,
+		[MSG.FIELD_DISABLED]: (m, rows) => {
+			const zones = lockedZones(m.mask);
+			if (zones.length === locked.length && zones.every((zone, i) => zone === locked[i])) return;
+			locked = zones;
+			rows.push(zones.length ? { t: TAG.LOCK, nums: zones } : { t: TAG.LOCK });
+		},
 		[MSG.HINT]: (m, rows) => {
 			const hinted = captionHint(m);
 			if (hinted !== undefined) hint = hinted;

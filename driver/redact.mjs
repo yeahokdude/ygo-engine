@@ -1,4 +1,4 @@
-import { HINT, LOCATION, MSG, POS } from './constants.mjs';
+import { CHINT, HINT, LOCATION, MSG, POS } from './constants.mjs';
 import { isPrompt } from './messages.mjs';
 
 const holds = (seats, player) => seats.includes(player);
@@ -15,6 +15,7 @@ function zeroed(cards, deny) {
 }
 
 const faceDown = (card) => (card.position & POS.FACEUP) === 0;
+const hiddenAt = (place) => (place.location & LOCATION.OVERLAY) === 0 && faceDown(place);
 const ownersView = (message, key, seats) => {
 	if (holds(seats, message.player)) return message;
 	const cards = zeroed(message[key], faceDown);
@@ -34,6 +35,8 @@ const RULES = {
 		if (OTHERS_HINTS.has(message.type)) return notOnly(seats, message.player) ? message : null;
 		return message;
 	},
+
+	[MSG.CARD_HINT]: (message, seats) => (message.type === CHINT.DESC_ADD && hiddenAt(message.card) && !holds(seats, message.card.controller) ? null : message),
 
 	[MSG.DRAW]: (message, seats) => ownersView(message, 'cards', seats),
 	[MSG.SHUFFLE_HAND]: (message, seats) => (holds(seats, message.player) ? message : { ...message, codes: message.codes.map(() => 0) }),

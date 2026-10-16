@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { DUEL, HINT, LOCATION, MSG, POS, TYPE, clockFromSeed, createEngine, loadDecks, play, redact, redactQuery } from '../driver/index.mjs';
+import { CHINT, DUEL, HINT, LOCATION, MSG, PHINT, POS, TYPE, clockFromSeed, createEngine, loadDecks, play, redact, redactQuery } from '../driver/index.mjs';
 import { DECKS, SEED, TEAM, bot, browserEntry, cardReader } from './vanilla.mjs';
 
 const browser = await browserEntry();
@@ -58,6 +58,20 @@ const withheld = (message, seats) => assert.equal(redact(message, seats), null, 
 
 	const card = { kind: MSG.HINT, type: HINT.CARD, player: 1, description: 502n };
 	for (const seats of EVERYONE) passes(card, seats);
+
+	const hung = (type, place) => ({ kind: MSG.CARD_HINT, card: place, type, value: (14558127n << 20n) | 1n });
+	const inHand = hung(CHINT.DESC_ADD, at(1, LOCATION.HAND, 2, POS.FACEDOWN));
+	passes(inHand, SEAT_1);
+	passes(inHand, BOTH);
+	withheld(inHand, SEAT_0);
+	withheld(inHand, GALLERY);
+	withheld(hung(CHINT.DESC_ADD, at(0, LOCATION.MZONE, 1, POS.FACEDOWN_DEFENSE)), SEAT_1);
+	for (const place of [at(0, LOCATION.MZONE, 1), at(1, LOCATION.HAND, 0, POS.FACEUP), at(0, LOCATION.GRAVE), at(0, LOCATION.MZONE | LOCATION.OVERLAY, 1, 2)]) {
+		for (const seats of EVERYONE) passes(hung(CHINT.DESC_ADD, place), seats);
+	}
+	for (const seats of EVERYONE) passes(hung(CHINT.DESC_REMOVE, at(1, LOCATION.HAND, 2, POS.FACEDOWN)), seats);
+	for (const seats of EVERYONE) passes(hung(CHINT.TURN, at(1, LOCATION.SZONE, 0, POS.FACEDOWN)), seats);
+	for (const seats of EVERYONE) passes({ kind: MSG.PLAYER_HINT, player: 0, type: PHINT.DESC_ADD, description: 502n }, seats);
 	console.log('hints      ok');
 }
 

@@ -1,4 +1,4 @@
-import { CHINT, HINT, LOCATION, MSG, MSG_NAME, PHASE, POS, QUERY, REASON, STATUS } from './constants.mjs';
+import { CHINT, HINT, LOCATION, MSG, MSG_NAME, PHASE, PHINT, POS, QUERY, REASON, STATUS } from './constants.mjs';
 import { DECODED_KINDS, isPrompt } from './messages.mjs';
 import { bitsOf, captionHint, translatePrompt } from './prompts.mjs';
 import { redactQuery } from './redact.mjs';
@@ -24,6 +24,7 @@ const PHASE_OF = {
 
 const DESCRIPTION_SHIFT = 20n;
 const DESCRIPTION_MASK = (1n << DESCRIPTION_SHIFT) - 1n;
+const textOf = (description) => [Number(description >> DESCRIPTION_SHIFT), Number(description & DESCRIPTION_MASK)];
 
 export function zoneOf(controller, location, sequence) {
 	if (location === LOCATION.MZONE) {
@@ -119,6 +120,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 	let hint = null;
 	let consumed = null;
 	const written = new Map();
+	const described = new Map();
 
 	const fail = (what) => {
 		throw new Error(`translate: ${what}`);
@@ -133,23 +135,35 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 	function retire(inst) {
 		for (const unit of materials.get(inst) ?? []) retire(unit);
 		materials.delete(inst);
+		described.delete(inst);
 		cards.delete(inst);
 	}
 
-	function at(place) {
+	function hang(holder, removing, value) {
+		const held = described.get(holder) ?? new Map();
+		const count = held.get(value) ?? 0;
+		if (removing && count === 0) return false;
+		if (removing && count === 1) held.delete(value);
+		else held.set(value, count + (removing ? -1 : 1));
+		described.set(holder, held);
+		return true;
+	}
+
+	function holding(place) {
 		const { controller, location, sequence } = place;
+		const seat = table[controller];
+		if (seat === undefined) return 0;
 		if (location & LOCATION.OVERLAY) {
-			const host = at({ controller, location: location & ~LOCATION.OVERLAY, sequence });
-			const unit = (materials.get(host) ?? [])[place.position];
-			return unit ?? fail(`no overlay unit at ${describe(place)}`);
+			const host = holding({ controller, location: location & ~LOCATION.OVERLAY, sequence });
+			return (materials.get(host) ?? [])[place.position] ?? 0;
 		}
-		const seat = table[controller] ?? fail(`no seat ${controller}`);
-		if (location === LOCATION.MZONE || location === LOCATION.SZONE) {
-			const slots = location === LOCATION.MZONE ? seat.mzone : seat.szone;
-			return slots[sequence] || fail(`no card at ${describe(place)}`);
-		}
-		const list = seat[LIST_OF[location]] ?? fail(`no location ${location}`);
-		return list[sequence] ?? fail(`no card at ${describe(place)}`);
+		if (location === LOCATION.MZONE) return seat.mzone[sequence] ?? 0;
+		if (location === LOCATION.SZONE) return seat.szone[sequence] ?? 0;
+		return seat[LIST_OF[location]]?.[sequence] ?? 0;
+	}
+
+	function at(place) {
+		return holding(place) || fail(`no card at ${describe(place)}`);
 	}
 
 	function lift(inst) {
@@ -388,7 +402,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 			const inst = at(m);
 			learn(inst, m.code);
 			const description = BigInt(m.description);
-			rows.push({ t: TAG.ACTIVATE, actor: m.triggeringController, insts: [inst], cards: [m.code], verb: VERB.activate, nums: [Number(description >> DESCRIPTION_SHIFT), Number(description & DESCRIPTION_MASK)] });
+			rows.push({ t: TAG.ACTIVATE, actor: m.triggeringController, insts: [inst], cards: [m.code], verb: VERB.activate, nums: textOf(description) });
 			rows.push({ t: TAG.CHAIN, actor: m.triggeringController, insts: [inst], nums: [CHAIN.LINK, m.chainCount] });
 		},
 		[MSG.CHAIN_SOLVING]: (m, rows) => rows.push({ t: TAG.CHAIN, nums: [CHAIN.SOLVING, m.chainCount] }),
@@ -463,12 +477,23 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 			if (row !== null) rows.push(row);
 		},
 		[MSG.CARD_HINT]: (m, rows) => {
+			if (m.type === CHINT.DESC_ADD || m.type === CHINT.DESC_REMOVE) {
+				const removing = m.type === CHINT.DESC_REMOVE;
+				const inst = removing ? holding(m.card) : at(m.card);
+				const value = BigInt(m.value);
+				if (inst && hang(inst, removing, value)) rows.push({ t: TAG.HINT, insts: [inst], nums: [m.type, ...textOf(value)] });
+				return;
+			}
 			const held = HELD[m.type];
 			if (!held) return;
 			const { cards, nums = [] } = held(BigInt(m.value));
 			rows.push({ t: TAG.HINT, insts: [at(m.card)], ...(cards ? { cards } : {}), nums: [m.type, ...nums] });
 		},
-		[MSG.PLAYER_HINT]: silent,
+		[MSG.PLAYER_HINT]: (m, rows) => {
+			if (m.type !== PHINT.DESC_ADD && m.type !== PHINT.DESC_REMOVE) return;
+			const value = BigInt(m.description);
+			if (hang(-1 - m.player, m.type === PHINT.DESC_REMOVE, value)) rows.push({ t: TAG.HINT, actor: m.player, nums: [m.type, ...textOf(value)] });
+		},
 		[MSG.AI_NAME]: silent,
 		[MSG.SHOW_HINT]: silent,
 		[MSG.MATCH_KILL]: silent,

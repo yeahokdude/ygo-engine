@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { ATTRIBUTE, CHINT, DUEL, DUEL_STATUS, HINT, LOCATION, MSG, PHASE, POS, QUERY, RACE, STATUS, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
+import { ATTRIBUTE, CHINT, DUEL, DUEL_STATUS, HINT, LOCATION, MSG, PHASE, PHINT, POS, QUERY, RACE, STATUS, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
 import { conjure, conjureError, placeOf } from '../driver/conjure.mjs';
 import { unruledKinds } from '../driver/translate.mjs';
 import { DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
@@ -537,8 +537,6 @@ const played = await (async () => {
 				held(CHINT.NUMBER, 3000n),
 				held(CHINT.TURN, 0n),
 				held(CHINT.CARD, 0n),
-				held(CHINT.DESC_ADD, (1n << 20n) | 2n),
-				held(CHINT.DESC_REMOVE, (1n << 20n) | 2n),
 			]),
 			[
 				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.TURN, 2] },
@@ -549,7 +547,36 @@ const played = await (async () => {
 				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.TURN] },
 				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.CARD] },
 			],
-			'what a lasting effect hangs on a card is a row on its handle, a card by its code and a Type or an Attribute by its place; a zero holds nothing, and an effect described on the card is no row',
+			'what a lasting effect hangs on a card is a row on its handle, a card by its code and a Type or an Attribute by its place; a zero holds nothing',
+		);
+		const own = (1n << 20n) | 2n;
+		assert.deepEqual(
+			translator.translate([held(CHINT.DESC_ADD, own), held(CHINT.DESC_ADD, own), held(CHINT.DESC_ADD, 3000n), held(CHINT.DESC_REMOVE, own), held(CHINT.DESC_REMOVE, 3000n), held(CHINT.DESC_REMOVE, 3000n)]),
+			[
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.DESC_ADD, 1, 2] },
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.DESC_ADD, 1, 2] },
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.DESC_ADD, 0, 3000] },
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.DESC_REMOVE, 1, 2] },
+				{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.DESC_REMOVE, 0, 3000] },
+			],
+			"an effect's description hung on a card is a row of which card's text and which slot, as often as it is hung; one it no longer holds comes off as no row",
+		);
+		const empty = at(0, LOCATION.MZONE, 4);
+		assert.deepEqual(translator.translate([{ kind: MSG.CARD_HINT, card: empty, type: CHINT.DESC_REMOVE, value: own }]), [], 'a token the core takes off a description after removing is no card here, and nothing comes off');
+		assert.throws(() => translator.translate([{ kind: MSG.CARD_HINT, card: empty, type: CHINT.DESC_ADD, value: own }]), /no card at 0\/MZONE\/4/, 'a description hung where the shadow holds no card is a drift');
+		translator.translate([move(1, lies, at(0, LOCATION.HAND, 0, POS.FACEDOWN), 0)]);
+		assert.deepEqual(translator.translate([held(CHINT.DESC_REMOVE, own)].map((m) => ({ ...m, card: at(0, LOCATION.HAND, 0, POS.FACEDOWN) }))), [{ t: TAG.HINT, insts: [H.top0], nums: [CHINT.DESC_REMOVE, 1, 2] }], 'a description keeps to its card as it moves, until the core takes it off');
+		const inHand = at(0, LOCATION.HAND, 0, POS.FACEDOWN);
+		translator.translate([{ kind: MSG.CARD_HINT, card: inHand, type: CHINT.DESC_ADD, value: 225n }, { kind: MSG.SHUFFLE_HAND, player: 0, codes: [1] }]);
+		assert.deepEqual(translator.translate([{ kind: MSG.CARD_HINT, card: inHand, type: CHINT.DESC_REMOVE, value: 225n }]), [], 'a shuffled hand is fresh handles, holding none of what the retired ones held');
+		const player = (player, type, description) => ({ kind: MSG.PLAYER_HINT, player, type, description });
+		assert.deepEqual(
+			translator.translate([player(1, PHINT.DESC_ADD, own), player(0, PHINT.DESC_REMOVE, own), player(1, PHINT.DESC_REMOVE, own)]),
+			[
+				{ t: TAG.HINT, actor: 1, nums: [PHINT.DESC_ADD, 1, 2] },
+				{ t: TAG.HINT, actor: 1, nums: [PHINT.DESC_REMOVE, 1, 2] },
+			],
+			"a player's description is a row on its seat, kept apart from the other seat's",
 		);
 	}
 

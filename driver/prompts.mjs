@@ -55,28 +55,19 @@ function onePerCard(cards) {
 
 const regionsOf = (mask) => POSITIONS.filter(([position, , region]) => region !== null && mask & position).map(([, , region]) => region);
 
-function summonMember(resolve, card, index) {
-	const payload = command(IDLE.SP_SUMMON, index);
-	if (card.landings) return cardMember(resolve, card, VERB.specialSummon, payload, { zones: zonesOf(resolve, card.landings) });
-	const regions = regionsOf(card.positions?.own ?? 0);
-	const across = regionsOf(card.positions?.across ?? 0);
-	return cardMember(resolve, card, VERB.specialSummon, payload, {
-		...(regions.length ? { regions } : {}),
-		...(across.length ? { across } : {}),
-	});
+function landingOf(resolve, player, landing) {
+	if (landing === undefined) return {};
+	if (landing.asks) return { asksFirst: true };
+	const regions = regionsOf(landing.positions);
+	if (regions.length === 0) return { zones: [] };
+	const zones = new Set();
+	for (const [seat, mask] of [[player, landing.own], [1 - player, landing.across]]) {
+		for (let sequence = 0; sequence < MONSTER_SLOTS; sequence++) if ((mask >>> sequence) & 1) zones.add(resolve.zone(seat, LOCATION.MZONE, sequence));
+	}
+	return { zones: [...zones].sort((a, b) => a - b), regions };
 }
 
-function zonesOf(resolve, landings) {
-	const positions = new Map();
-	for (const { controller, sequence, positions: taken } of landings) {
-		const zone = resolve.zone(controller, LOCATION.MZONE, sequence);
-		positions.set(zone, (positions.get(zone) ?? 0) | taken);
-	}
-	return [...positions]
-		.sort(([a], [b]) => a - b)
-		.map(([zone, taken]) => ({ zone, regions: regionsOf(taken) }))
-		.filter(({ regions }) => regions.length > 0);
-}
+const summonMember = (resolve, player, verb, action) => (card, index) => cardMember(resolve, card, verb, command(action, index), landingOf(resolve, player, card.landing));
 
 export function bitsOf(mask) {
 	const value = BigInt(mask);
@@ -92,10 +83,10 @@ const RULES = {
 		family: 'idle',
 		shape: SHAPE.ONE_OF,
 		members: [
-			...m.summonable.map((card, index) => cardMember(resolve, card, VERB.normalSummon, command(IDLE.SUMMON, index))),
-			...onePerCard(m.spSummonable).map(([card, index]) => summonMember(resolve, card, index)),
+			...m.summonable.map(summonMember(resolve, m.player, VERB.normalSummon, IDLE.SUMMON)),
+			...onePerCard(m.spSummonable).map(([card, index]) => summonMember(resolve, m.player, VERB.specialSummon, IDLE.SP_SUMMON)(card, index)),
 			...m.repositionable.map((card, index) => cardMember(resolve, card, VERB.position, command(IDLE.POS_CHANGE, index))),
-			...m.monsterSettable.map((card, index) => cardMember(resolve, card, VERB.setMonster, command(IDLE.MONSTER_SET, index))),
+			...m.monsterSettable.map(summonMember(resolve, m.player, VERB.setMonster, IDLE.MONSTER_SET)),
 			...m.spellSettable.map((card, index) => cardMember(resolve, card, VERB.setSpellTrap, command(IDLE.SPELL_SET, index))),
 			...m.activatable.map((effect, index) => effectMember(resolve, effect, command(IDLE.ACTIVATE, index))),
 			...(m.toBp ? [phaseMember(m.player, PACK_PHASE.BP, command(IDLE.TO_BP, 0))] : []),

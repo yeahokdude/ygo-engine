@@ -6,19 +6,16 @@ import { encodeResponse } from './responses.mjs';
 
 const CREATION_NAME = Object.fromEntries(Object.entries(CREATION).map(([name, value]) => [value, name]));
 const PAGE = 65_536;
+const LANDING_ASKS = 0x8000_0000;
 
 export async function createEngine(instantiate, { log = defaultLog } = {}) {
 	const duels = new Map();
-	let muted = 0;
-	const say = (sink, entry) => {
-		if (muted === 0) sink(entry);
-	};
 	const module = await instantiate({
-		print: (text) => say(log, { channel: 'stdout', text }),
-		printErr: (text) => say(log, { channel: 'stderr', text }),
+		print: (text) => log({ channel: 'stdout', text }),
+		printErr: (text) => log({ channel: 'stderr', text }),
 		handleDataReader: (payload, code, pointer) => duels.get(payload)?.readCard(code, pointer),
 		handleScriptReader: (payload, _duel, name) => duels.get(payload)?.readScript(name) ?? null,
-		handleLogHandler: (payload, text, type) => say(duels.get(payload)?.log ?? log, { channel: 'core', type, text }),
+		handleLogHandler: (payload, text, type) => (duels.get(payload)?.log ?? log)({ channel: 'core', type, text }),
 	});
 	const heap = new Heap(module.wasmMemory);
 	let nextPayload = 1;
@@ -57,17 +54,6 @@ export async function createEngine(instantiate, { log = defaultLog } = {}) {
 			}
 			heap.bytes.set(bytes);
 			heap.bytes.fill(0, bytes.length);
-		},
-
-		rewinding(fn) {
-			const start = engine.snapshot();
-			muted++;
-			try {
-				return fn(() => engine.restore(start));
-			} finally {
-				engine.restore(start);
-				muted--;
-			}
 		},
 
 		createDuel({ seed, flags, team1, team2, cardReader, scriptReader, clock, log: duelLog = log }) {
@@ -233,9 +219,10 @@ export async function createEngine(instantiate, { log = defaultLog } = {}) {
 				return call(() => module._ocgapiDuelQueryCount(handle, team, location));
 			},
 
-			summonPositions({ controller, location, sequence }) {
-				const sides = call(() => module._ocgapiDuelSummonPositions(handle, controller, location, sequence)) >>> 0;
-				return { own: sides & 0xff, across: (sides >>> 8) & 0xff };
+			summonLanding({ controller, location, sequence }, kind) {
+				const read = call(() => module._ocgapiDuelSummonLanding(handle, controller, location, sequence, kind)) >>> 0;
+				if (read & LANDING_ASKS) return { asks: true };
+				return { own: read & 0x7f, across: (read >>> 16) & 0x7f, positions: (read >>> 8) & 0xf };
 			},
 
 			destroy() {

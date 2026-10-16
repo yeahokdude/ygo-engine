@@ -571,19 +571,22 @@ end`;
 	const idle = solo.steps.at(-1).prompt;
 	const summons = idle.members.filter((member) => member.verb === VERB.specialSummon);
 	const row = (seat) => ZONE.MZ.map((slot) => seatZone(seat, slot));
-	const zones = (ids, regions) => ids.map((zone) => ({ zone, regions }));
+	const landed = (member) => [member.code, member.asksFirst, member.zones, member.regions];
 	assert.deepEqual(
-		summons.map((member) => [member.code, member.zones, member.regions, member.across]).sort(([a], [b]) => a - b),
+		summons.map(landed).sort(([a], [b]) => a - b),
 		[
-			[DEFENSE, zones(row(0), [REGION.DEF]), undefined, undefined],
-			[BOTH, zones(row(0), [REGION.ATK, REGION.DEF]), undefined, undefined],
-			[LINKED, zones(EMZ, [REGION.ATK]), undefined, undefined],
-			[FUSED, zones([...row(0), ...EMZ], [REGION.ATK, REGION.DEF]), undefined, undefined],
-			[ACROSS, zones(row(1), [REGION.DEF]), undefined, undefined],
-			[SIDES, [...zones(row(0), [REGION.ATK]), ...zones(row(1), [REGION.ATK, REGION.DEF])], undefined, undefined],
+			[DEFENSE, undefined, row(0), [REGION.DEF]],
+			[BOTH, true, undefined, undefined],
+			[LINKED, undefined, [...EMZ].sort((a, b) => a - b), [REGION.ATK]],
+			[FUSED, undefined, [...row(0), ...EMZ].sort((a, b) => a - b), [REGION.ATK, REGION.DEF]],
+			[ACROSS, undefined, row(1), [REGION.DEF]],
+			[SIDES, true, undefined, undefined],
 		],
-		'each card once, in the zones its summon was tried into and the positions it takes in each — a Link in attack alone, in a shared zone',
+		'each card once, in the zones the core would offer it and the positions it takes there — a Link in attack alone, in a shared zone — and asked first where two procedures summon it',
 	);
+	const placings = (prompt, verb) => prompt.members.filter((member) => member.verb === verb).map(landed);
+	assert.deepEqual(placings(idle, VERB.normalSummon), [DEFENSE, BOTH, ACROSS, SIDES, DECKS[0].main[4]].map((code) => [code, undefined, row(0), [REGION.ATK]]), 'a Normal Summon with no tribute in attack, in every empty Main Monster Zone');
+	assert.deepEqual(placings(idle, VERB.setMonster), [DEFENSE, BOTH, ACROSS, SIDES, DECKS[0].main[4]].map((code) => [code, undefined, row(0), [REGION.SET_DEF]]), 'and its Set face-down there');
 	const summon = (code) => answer({ shape: SHAPE.ONE_OF, member: solo.steps.at(-1).prompt.members.findIndex((member) => member.verb === VERB.specialSummon && member.code === code) });
 	const placed = async () => {
 		let next = await answer({ shape: SHAPE.SUBSET, members: [0] });
@@ -596,6 +599,7 @@ end`;
 	asked = await placed();
 	assert.equal(asked?.family, 'idle', 'and never its position');
 	assert.deepEqual(field(0), [[DEFENSE, POS.FACEUP_DEFENSE]], 'it lands in the one position offered');
+	assert.deepEqual(asked.members.find((member) => member.verb === VERB.normalSummon).zones, row(0).slice(1), 'and the zone it took is no Normal Summon\'s any more');
 	asked = await summon(ACROSS);
 	assert.equal(asked.family, 'zone', 'a summon onto the other side is asked its zone');
 	assert.ok(asked.player === 0 && asked.members.length > 0 && asked.members.every((member) => member.payload >>> 16 === 1), 'by its summoner, among the other side\'s zones');
@@ -606,5 +610,5 @@ end`;
 	assert.equal(asked.family, 'option', 'a card two procedures summon is asked which');
 	session.close();
 	solo.close();
-	console.log(`summoned   ok  ${summons.length} Special Summons, each in the zones and positions it was tried into`);
+	console.log(`summoned   ok  ${summons.length} Special Summons, each in the zones and positions the core would offer it, or asked first`);
 }

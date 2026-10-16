@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-import { ATTRIBUTE, DUEL, LOCATION, MSG, POS, RACE, TYPE, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, replyFor } from '../driver/index.mjs';
+import { ATTRIBUTE, DUEL, LOCATION, MSG, POS, RACE, TYPE, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, readLandings, redact, replyFor } from '../driver/index.mjs';
 
 export const DIST = new URL('../dist/', import.meta.url);
 
@@ -60,10 +60,11 @@ export async function directDuel(instantiate) {
 	const fields = [];
 	const result = play(
 		duel,
-		(prompt) => {
+		(prompt, batch) => {
+			batch.prompt = readLandings(duel, prompt);
 			fields.push(pollField(duel));
 			const answer = bot(prompt);
-			replies.push(replyFor(translator.prompt(redact(prompt, [0, 1])), answer));
+			replies.push(replyFor(translator.prompt(redact(batch.prompt, [0, 1])), answer));
 			return answer;
 		},
 		{

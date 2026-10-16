@@ -1,4 +1,4 @@
-import { DUEL, DUEL_STATUS, MSG, advance, clockFromSeed, createEngine, createTranslator, encodeResponse, loadDecks, pollField, redact, redactQuery, responseFor, trySummons } from '../driver/index.mjs';
+import { DUEL, DUEL_STATUS, MSG, advance, clockFromSeed, createEngine, createTranslator, encodeResponse, loadDecks, pollField, readLandings, redact, redactQuery, responseFor } from '../driver/index.mjs';
 import { conjure, conjureError } from '../driver/conjure.mjs';
 
 export const PROTOCOL = 5;
@@ -41,6 +41,11 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 		pending = null;
 		held = null;
 		broadcast({ type: 'end', decisions, ...frame });
+	};
+
+	const landed = (prompt) => {
+		if (prompt.kind === MSG.SELECT_IDLECMD) calls.push({ land: prompt });
+		return readLandings(duel, prompt);
 	};
 
 	const poll = () => {
@@ -89,7 +94,7 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 				}
 				if (!batch.prompt) throw new Error('the core is waiting on nothing');
 				if (answered) decisions++;
-				pending = trySummons(engine, duel, batch.prompt);
+				pending = landed(batch.prompt);
 				asked = at;
 				deliver(messages, pending, false);
 				return;
@@ -153,6 +158,7 @@ export function createSession({ instantiate, cardReader, cardCodes = null, scrip
 	const repeat = (target, call) => {
 		if (call === PROCESS) advance(target);
 		else if (call === POLL) pollField(target);
+		else if (call.land) readLandings(target, call.land);
 		else if (call.respond) target.respondBytes(call.respond);
 		else if (call.query) ask(target, call.query, call.seats);
 		else conjure(target, call.made, cardReader(call.made.code), deal.duel.flags);

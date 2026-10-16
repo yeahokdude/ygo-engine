@@ -96,6 +96,19 @@ assert.deepEqual(unruledKinds(), []);
 	assert.match(conjureError({ seat: 0, code: 22, zone: seatZone(0, ZONE.EXTRA), flags: UP }, reader(22), table), /Extra Deck takes/, 'a face-up card that is no Pendulum');
 	assert.match(conjureError({ seat: 0, code: 91, zone: seatZone(0, ZONE.EXTRA), flags: DOWN }, reader(91), table), /Extra Deck takes/, 'a face-down card from the main deck');
 	assert.match(conjureError({ seat: 0, code: 90, zone: seatZone(0, ZONE.DECK), flags: 0 }, reader(90), table), /no hand and no main deck/);
+	const [spell, monster, fieldSpell, across] = (() => {
+		const board = translator.board();
+		return [board[0].szone[2].inst, board[0].mzone[0].inst, board[0].szone[5].inst, board[1].mzone[5].inst];
+	})();
+	const told = duel.messages().length;
+	const card = (controller, location, sequence) => `Duel.GetFieldCard(${controller},${location},${sequence})`;
+	assert.ok(duel.loadScript('relate', [`${card(0, 8, 2)}:SetCardTarget(${card(0, 4, 0)})`, `${card(0, 8, 5)}:SetCardTarget(${card(1, 4, 5)})`, `${card(0, 8, 2)}:CancelCardTarget(${card(0, 4, 0)})`].join(' ')));
+	const { TARGET } = vocabulary.RELATION;
+	assert.deepEqual(translator.translate(duel.messages().slice(told)), [
+		{ t: TAG.RELATE, insts: [spell, monster], nums: [TARGET] },
+		{ t: TAG.RELATE, insts: [spell, monster, fieldSpell, across], nums: [TARGET, TARGET] },
+		{ t: TAG.RELATE, insts: [fieldSpell, across], nums: [TARGET] },
+	], "the core's card targets, across the table too, and a cancel, each the whole set");
 	duel.destroy();
 	console.log(`conjure    ok  ${landings.length} cards made, the shadow held to the core after each`);
 }
@@ -414,11 +427,8 @@ const played = await (async () => {
 		]);
 		assert.equal(translator.board()[1].mzone[6].inst, H.top1, "seat 1's slot 6 is the shared zone the row named");
 		assert.equal(attacks[0].insts[1], H.top1);
-		const targets = translator.translate([{ kind: MSG.BECOME_TARGET, cards: [at(1, LOCATION.MZONE, 6)] }, { kind: MSG.EQUIP, card: at(0, LOCATION.MZONE, 4), target: at(1, LOCATION.MZONE, 6) }, { kind: MSG.CANCEL_TARGET, card: at(0, LOCATION.MZONE, 4), target: at(1, LOCATION.MZONE, 6) }]);
-		assert.deepEqual(targets, [
-			{ t: TAG.TARGET, insts: [H.top1], verb: VERB.target },
-			{ t: TAG.TARGET, insts: [H.top0, H.top1], verb: VERB.target },
-		]);
+		const targets = translator.translate([{ kind: MSG.BECOME_TARGET, cards: [at(1, LOCATION.MZONE, 6)] }]);
+		assert.deepEqual(targets, [{ t: TAG.TARGET, insts: [H.top1], verb: VERB.target }]);
 		const looks = translator.translate([
 			{ kind: MSG.CONFIRM_CARDS, player: 1, cards: [{ code: 2, controller: 0, location: LOCATION.DECK, sequence: 1 }] },
 			{ kind: MSG.CONFIRM_CARDS, player: 0, cards: [{ code: 4, controller: 1, location: LOCATION.MZONE, sequence: 6 }] },
@@ -506,6 +516,45 @@ const played = await (async () => {
 		assert.deepEqual(translator.stats(field({ 4: queried(POS.FACEUP_ATTACK, 1500, 1000, { link: 2 }) }, { 1: forbidden })), [{ t: TAG.STATS, insts: [H.top0], nums: [1500, 1000, 2, 0] }], 'back on the field, the same numbers are a baseline again');
 		assert.throws(() => translator.stats(field({ 0: queried(POS.FACEUP_ATTACK, 1, 1) })), /no card at 0\/MZONE\/0 to carry stats/, 'a card the shadow does not hold is a drift');
 		assert.throws(() => createTranslator({ seats: [0] }).stats(field()), /not open/);
+	}
+
+	{
+		const { translator } = fresh();
+		const { EQUIP, TARGET } = vocabulary.RELATION;
+		const relate = (kind, from, to) => translator.translate([{ kind, card: from, target: to }]);
+		const row = (...pairs) => [{ t: TAG.RELATE, insts: pairs.flatMap(([, from, to]) => [from, to]), nums: pairs.map(([kind]) => kind) }];
+		const tags = (rows) => rows.map((r) => r.t);
+		const [MONSTER, EQUIPPED, TRAP, THEIRS] = [at(0, LOCATION.MZONE, 0), at(0, LOCATION.SZONE, 0, POS.FACEUP), at(0, LOCATION.SZONE, 1, POS.FACEUP), at(1, LOCATION.MZONE, 0)];
+		translator.translate([
+			{ kind: MSG.DRAW, player: 0, cards: [{ code: 1, position: POS.FACEDOWN }, { code: 2, position: POS.FACEDOWN }, { code: 3, position: POS.FACEDOWN }] },
+			move(1, at(0, LOCATION.HAND, 0, POS.FACEDOWN), MONSTER, 0),
+			move(2, at(0, LOCATION.HAND, 0, POS.FACEDOWN), EQUIPPED, 0),
+			move(3, at(0, LOCATION.HAND, 0, POS.FACEDOWN), TRAP, 0),
+			{ kind: MSG.DRAW, player: 1, cards: [{ code: 4, position: POS.FACEDOWN }, { code: 5, position: POS.FACEDOWN }] },
+			move(4, at(1, LOCATION.HAND, 0, POS.FACEDOWN), THEIRS, 0),
+		]);
+		const [monster, equipped, trap, theirs] = [H.top0, H.second0, H.bottom0, H.top1];
+		assert.deepEqual(relate(MSG.EQUIP, EQUIPPED, MONSTER), row([EQUIP, equipped, monster]), 'an equip is a relation, the whole set written');
+		assert.deepEqual(relate(MSG.CARD_TARGET, EQUIPPED, MONSTER), [], 'the target an equip holds on its monster is the equip');
+		assert.deepEqual(relate(MSG.CARD_TARGET, TRAP, THEIRS), row([EQUIP, equipped, monster], [TARGET, trap, theirs]));
+		assert.deepEqual(relate(MSG.CARD_TARGET, TRAP, MONSTER), row([EQUIP, equipped, monster], [TARGET, trap, monster], [TARGET, trap, theirs]), 'one card, then the other, in the order of their handles');
+		assert.deepEqual(relate(MSG.CARD_TARGET, TRAP, MONSTER), [], 'a relation held already writes nothing');
+		assert.deepEqual(relate(MSG.CANCEL_TARGET, TRAP, MONSTER), row([EQUIP, equipped, monster], [TARGET, trap, theirs]), 'its cancel is written');
+		assert.deepEqual(relate(MSG.CANCEL_TARGET, EQUIPPED, MONSTER), [], 'cancelling the target an equip holds leaves the equip');
+		assert.deepEqual(relate(MSG.CARD_TARGET, TRAP, at(1, LOCATION.HAND, 0, POS.FACEDOWN)), [], 'a card off the field is related to nothing');
+		assert.deepEqual(relate(MSG.EQUIP, EQUIPPED, THEIRS), row([EQUIP, equipped, theirs], [TARGET, trap, theirs]), 'an equip moved to another monster leaves the first');
+		assert.deepEqual(relate(MSG.EQUIP, EQUIPPED, MONSTER), row([EQUIP, equipped, monster], [TARGET, trap, theirs]));
+		assert.deepEqual(tags(translator.translate([move(4, THEIRS, at(0, LOCATION.MZONE, 3), 0)])), [TAG.MOVE], 'a card taken across the field keeps its relations');
+		assert.deepEqual(tags(translator.translate([{ kind: MSG.POS_CHANGE, code: 1, ...MONSTER, previousPosition: POS.FACEUP_ATTACK, position: POS.FACEUP_DEFENSE }])), [TAG.FLIP], 'and so does one turned to Defense Position');
+		assert.deepEqual(tags(translator.translate([move(1, MONSTER, at(0, LOCATION.GRAVE, 0, POS.FACEUP), 1)])), [TAG.MOVE], 'a card leaving the field ends its relations, which the fold ends too with no row');
+		assert.deepEqual(relate(MSG.CARD_TARGET, TRAP, at(0, LOCATION.MZONE, 3)), [], 'so the set the next row measures against is the fold\'s');
+		assert.deepEqual(tags(translator.translate([{ kind: MSG.POS_CHANGE, code: 4, ...at(0, LOCATION.MZONE, 3), previousPosition: POS.FACEUP_ATTACK, position: POS.FACEDOWN_DEFENSE }])), [TAG.FLIP], 'nor one turned face-down');
+		assert.deepEqual(relate(MSG.CARD_TARGET, TRAP, at(0, LOCATION.MZONE, 3)), row([TARGET, trap, theirs]), 'which a target may still be put on');
+		translator.translate([move(5, at(1, LOCATION.HAND, 0, POS.FACEDOWN), at(1, LOCATION.MZONE, 1), 0), { kind: MSG.CARD_TARGET, card: at(1, LOCATION.MZONE, 1), target: EQUIPPED }]);
+		const across = translator.translate([move(5, at(1, LOCATION.MZONE, 1), at(1, LOCATION.SZONE, 0, POS.FACEUP), 0)]);
+		assert.deepEqual(across.map((r) => [r.t, r.insts]), [[TAG.MOVE, [6]], [TAG.RELATE, [trap, theirs]]], 'a card moved between the Monster Zones and the Spell & Trap Zones ends its relations, and says so');
+		assert.deepEqual(tags(translator.translate([{ kind: MSG.REMOVE_CARDS, cards: [at(0, LOCATION.MZONE, 3)] }])), [TAG.REMOVE], 'and one that stops existing');
+		assert.deepEqual(relate(MSG.CANCEL_TARGET, TRAP, EQUIPPED), [], 'a cancel of a relation not held writes nothing');
 	}
 
 	{

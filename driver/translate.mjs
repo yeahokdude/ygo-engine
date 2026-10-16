@@ -2,7 +2,7 @@ import { CHINT, HINT, LOCATION, MSG, MSG_NAME, PHASE, PHINT, POS, QUERY, REASON,
 import { DECODED_KINDS, isPrompt } from './messages.mjs';
 import { bitsOf, captionHint, translatePrompt } from './prompts.mjs';
 import { redactQuery } from './redact.mjs';
-import { AUDIENCE, CHAIN, DECLARATION, EMZ, FLAG, PACK_PHASE, TAG, VERB, ZONE, audienceRef, seatZone, zoneRef, zoneSpec } from './vocabulary.mjs';
+import { AUDIENCE, CHAIN, DECLARATION, EMZ, FLAG, PACK_PHASE, RELATION, TAG, VERB, ZONE, audienceRef, seatZone, zoneRef, zoneSpec } from './vocabulary.mjs';
 
 const LIST_OF = { [LOCATION.DECK]: 'deck', [LOCATION.HAND]: 'hand', [LOCATION.GRAVE]: 'grave', [LOCATION.REMOVED]: 'removed', [LOCATION.EXTRA]: 'extra' };
 const ZONE_OF = { [LOCATION.DECK]: ZONE.DECK, [LOCATION.HAND]: ZONE.HAND, [LOCATION.GRAVE]: ZONE.GY, [LOCATION.REMOVED]: ZONE.BANISH, [LOCATION.EXTRA]: ZONE.EXTRA };
@@ -118,6 +118,9 @@ export function pollField(duel) {
 	}));
 }
 
+const fielded = (place) => place.location === LOCATION.MZONE || place.location === LOCATION.SZONE;
+const byPair = (a, b) => a[1] - b[1] || a[2] - b[2];
+
 const seatState = (lp) => ({ lp, mzone: new Array(7).fill(0), szone: new Array(8).fill(0), deck: [], hand: [], grave: [], removed: [], extra: [] });
 const describe = ({ controller, location, sequence, position }) => `${controller}/${LOCATION_NAME[location & ~LOCATION.OVERLAY] ?? location}/${sequence}${location & LOCATION.OVERLAY ? `#${position}` : ''}`;
 
@@ -133,6 +136,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 	let hint = null;
 	let consumed = null;
 	let locked = [];
+	let related = [];
 	const written = new Map();
 	const described = new Map();
 
@@ -236,6 +240,24 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		if (position !== undefined) known.position = position;
 	}
 
+	const fieldSlot = (inst) => table.some((seat) => seat.mzone.includes(inst) || seat.szone.includes(inst));
+
+	function relate(next, rows) {
+		const sorted = [...next].sort(byPair);
+		if (sorted.length === related.length && sorted.every((pair, i) => pair.every((value, j) => value === related[i][j]))) return;
+		related = sorted;
+		rows.push(sorted.length ? { t: TAG.RELATE, insts: sorted.flatMap(([, from, to]) => [from, to]), nums: sorted.map(([kind]) => kind) } : { t: TAG.RELATE });
+	}
+
+	function facesOfRelated() {
+		return new Map(related.flatMap(([, from, to]) => [from, to]).map((inst) => [inst, (positionOf(inst) & POS.FACEUP) !== 0]));
+	}
+
+	function settle(faces) {
+		const holds = (inst) => fieldSlot(inst) && !(faces.get(inst) && !(positionOf(inst) & POS.FACEUP));
+		related = related.filter(([, from, to]) => holds(from) && holds(to));
+	}
+
 	const codeOf = (inst) => cards.get(inst).code;
 	const positionOf = (inst) => cards.get(inst).position;
 	const zoneAt = (p) => zoneOf(p.controller, p.location & ~LOCATION.OVERLAY, p.sequence);
@@ -311,6 +333,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 			let flags = landing(zone, to.position);
 			if (to.location === LOCATION.DECK && to.sequence === 0) flags |= FLAG.AT_BOTTOM;
 			rows.push({ t: TAG.MOVE, insts: [inst], cards: [m.code], from: zoneRef(zoneAt(from)), to: zoneRef(zone), verb: moveVerb(from.location, to.location, to.sequence, to.position, m.reason), reason: m.reason, flags });
+			if (fielded(from) && fielded(to) && from.location !== to.location) relate(related.filter(([, a, b]) => a !== inst && b !== inst), rows);
 			if ((to.location === LOCATION.HAND || to.location === LOCATION.DECK) && to.position & POS.FACEUP) rows.push(revealAll(to.controller, [inst]));
 		},
 
@@ -434,9 +457,24 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		[MSG.BECOME_TARGET]: (m, rows) => rows.push({ t: TAG.TARGET, insts: m.cards.map(at), verb: VERB.target }),
 		[MSG.CARD_SELECTED]: (m, rows) => rows.push({ t: TAG.TARGET, insts: m.cards.map(at), verb: VERB.target }),
 		[MSG.RANDOM_SELECTED]: (m, rows) => rows.push({ t: TAG.TARGET, actor: m.player, insts: m.cards.map(at), verb: VERB.target }),
-		[MSG.EQUIP]: (m, rows) => rows.push({ t: TAG.TARGET, insts: [at(m.card), at(m.target)], verb: VERB.target }),
-		[MSG.CARD_TARGET]: (m, rows) => rows.push({ t: TAG.TARGET, insts: [at(m.card), at(m.target)], verb: VERB.target }),
-		[MSG.CANCEL_TARGET]: silent,
+		[MSG.EQUIP]: (m, rows) => {
+			if (!fielded(m.card) || !fielded(m.target)) return;
+			const card = at(m.card);
+			const target = at(m.target);
+			relate([...related.filter(([kind, from, to]) => from !== card || (kind === RELATION.TARGET && to !== target)), [RELATION.EQUIP, card, target]], rows);
+		},
+		[MSG.CARD_TARGET]: (m, rows) => {
+			if (!fielded(m.card) || !fielded(m.target)) return;
+			const card = at(m.card);
+			const target = at(m.target);
+			if (card === target || related.some(([, from, to]) => from === card && to === target)) return;
+			relate([...related, [RELATION.TARGET, card, target]], rows);
+		},
+		[MSG.CANCEL_TARGET]: (m, rows) => {
+			const card = at(m.card);
+			const target = at(m.target);
+			relate(related.filter(([kind, from, to]) => kind !== RELATION.TARGET || from !== card || to !== target), rows);
+		},
 
 		[MSG.NEW_TURN]: (m, rows) => {
 			turnPlayer = m.player;
@@ -559,7 +597,9 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 				if (message === null) continue;
 				if (isPrompt(message.kind)) continue;
 				const rule = RULES[message.kind] ?? fail(`no rule for message kind ${message.kind}${MSG_NAME[message.kind] ? ` (${MSG_NAME[message.kind]})` : ''}`);
+				const faces = related.length ? facesOfRelated() : null;
 				rule(message, rows);
+				if (faces) settle(faces);
 			}
 			return rows;
 		},

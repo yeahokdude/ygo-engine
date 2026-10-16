@@ -9,6 +9,7 @@ export const TAG = Object.freeze({
 	FLIP: 13,
 	COUNTER: 15,
 	LOCK: 16,
+	RELATE: 17,
 	REVEAL: 20,
 	ACTIVATE: 30,
 	TARGET: 31,
@@ -27,6 +28,8 @@ export const TAG = Object.freeze({
 });
 
 export const CHAIN = Object.freeze({ LINK: 1, SOLVING: 2, SOLVED: 3, NEGATED: 4, DISABLED: 5, END: 6 });
+
+export const RELATION = Object.freeze({ EQUIP: 1, TARGET: 2 });
 
 export const VERB = Object.freeze({
 	activate: 1,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ATTRIBUTE, CHINT, DUEL, DUEL_STATUS, HINT, LOCATION, MSG, PHASE, PHINT, POS, QUERY, RACE, STATUS, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
 import { conjure, conjureError, placeOf } from '../driver/conjure.mjs';
 import { unruledKinds } from '../driver/translate.mjs';
-import { DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
+import { CARDS, DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
 
 const { AUDIENCE, CHAIN, DECLARATION, EMZ, FLAG, PACK_PHASE, TAG, VERB, ZONE, audienceRef, seatZone, zoneRef } = vocabulary;
 const browser = await browserEntry();
@@ -272,6 +272,61 @@ const played = await (async () => {
 }
 
 {
+	const GIFT = 94;
+	const rows = new Map(CARDS).set(GIFT, { code: GIFT, alias: 0, setcodes: [], type: TYPE.SPELL, level: 0, attribute: 0, race: 0, attack: 0, defense: 0 });
+	const script = `function c${GIFT}.initial_effect(c)
+	local e=Effect.CreateEffect(c)
+	e:SetType(0x10)
+	e:SetCode(1002)
+	e:SetOperation(function(e,tp) Duel.SendtoHand(Duel.GetFieldGroup(tp,0x2,0),1-tp,0x40) end)
+	c:RegisterEffect(e)
+end`;
+	const scripts = new Map([[`c${GIFT}.lua`, script]]);
+	const engine = await createEngine(browser, { log: () => {} });
+	const duel = engine.createDuel({ seed: SEED, flags: DUEL.MODE_MR5, team1: TEAM, team2: TEAM, cardReader: (code) => rows.get(code) ?? null, scriptReader: (name) => scripts.get(name) ?? null, clock: clockFromSeed(SEED) });
+	const orders = loadDecks(duel, [{ main: [GIFT, ...DECKS[0].main.slice(1)], extra: [] }, DECKS[1]], { seed: SEED, shuffle: false });
+	duel.start();
+	const views = { both: [0, 1], holder: [1] };
+	const translators = Object.fromEntries(Object.entries(views).map(([name, seats]) => [name, createTranslator({ seats })]));
+	const written = Object.fromEntries(Object.entries(translators).map(([name, translator]) => [name, [...translator.open(orders)]]));
+	let given = false;
+	const result = play(
+		duel,
+		(prompt) => {
+			if (prompt.kind === MSG.SELECT_PLACE) {
+				const open = Array.from({ length: 5 }, (_, sequence) => sequence).find((sequence) => !((prompt.mask >>> (8 + sequence)) & 1));
+				return [{ player: prompt.player, location: LOCATION.SZONE, sequence: open }];
+			}
+			if (prompt.kind !== MSG.SELECT_IDLECMD) return bot(prompt);
+			if (given) return undefined;
+			given = true;
+			const index = prompt.activatable.findIndex((effect) => effect.code === GIFT);
+			assert.notEqual(index, -1, 'the spell in hand may be activated');
+			return { action: 5, index };
+		},
+		{
+			onBatch: (batch) => {
+				for (const [name, seats] of Object.entries(views)) written[name].push(...translators[name].translate(batch.messages.map((message) => redact(message, seats)).filter((message) => message !== null)));
+			},
+		},
+	);
+	assert.equal(result.reason, 'unanswerable');
+	const hand = duel.queryLocation({ controller: 1, location: LOCATION.HAND, flags: QUERY.CODE | QUERY.OWNER });
+	const owners = hand.map((card) => card.owner);
+	assert.ok(owners.includes(0) && owners.includes(1), "the seat across holds its own cards and the ones given to it");
+	for (const name of Object.keys(views)) {
+		const shuffles = written[name].filter((row) => row.t === TAG.SHUFFLE && row.to === zoneRef(seatZone(1, ZONE.HAND)));
+		assert.equal(shuffles.length, 1, `${name}: the core shuffles the hand it gave to`);
+		assert.deepEqual(shuffles[0].nums, [hand.length, ...owners], `${name}: the shuffle names whose each card is, as the core holds it`);
+		assert.deepEqual(shuffles[0].cards, hand.map((card) => card.code));
+		assert.deepEqual(translators[name].board()[1].hand.map((card) => card.owner), owners, `${name}: the shadow holds the owners the core does`);
+		assert.deepEqual(translators[name].audit(duel), []);
+	}
+	duel.destroy();
+	console.log(`given      ok  ${owners.filter((owner) => owner === 0).length} cards given across a hand of ${hand.length}, its shuffle naming their owner`);
+}
+
+{
 	const at = (controller, location, sequence, position = POS.FACEUP_ATTACK) => ({ controller, location, sequence, position });
 	const move = (code, from, to, reason = 0) => ({ kind: MSG.MOVE, code, from, to, reason });
 	const nowhere = at(0, 0, 0, 0);
@@ -350,6 +405,34 @@ const played = await (async () => {
 		zeroed.translate([{ kind: MSG.DRAW, player: 0, cards: [{ code: 0, position: POS.FACEDOWN }, { code: 0, position: POS.FACEDOWN }] }]);
 		assert.deepEqual(zeroed.translate([{ kind: MSG.SHUFFLE_HAND, player: 0, codes: [0, 0] }]), [{ t: TAG.SHUFFLE, actor: 0, to: zoneRef(seatZone(0, ZONE.HAND)), nums: [2] }], 'an all-zero list binds nothing and is not carried');
 
+		const across = fresh().translator;
+		across.translate([
+			{ kind: MSG.DRAW, player: 0, cards: [{ code: 1, position: POS.FACEDOWN }, { code: 2, position: POS.FACEDOWN }] },
+			{ kind: MSG.DRAW, player: 1, cards: [{ code: 4, position: POS.FACEDOWN }] },
+			move(1, at(0, LOCATION.HAND, 0, POS.FACEDOWN), at(1, LOCATION.HAND, 1, POS.FACEDOWN), 0x40),
+			move(4, nowhere, at(1, LOCATION.HAND, 2, POS.FACEDOWN), 0),
+			move(4, at(1, LOCATION.HAND, 0, POS.FACEDOWN), at(0, LOCATION.HAND, 1, POS.FACEDOWN), 0x40),
+		]);
+		assert.deepEqual(across.board().map((seat) => seat.hand.map((card) => [card.code, card.owner])), [[[2, 0], [4, 1]], [[1, 0], [4, 1]]]);
+		assert.deepEqual(across.translate([{ kind: MSG.SHUFFLE_HAND, player: 1, codes: [4, 1] }])[0].nums, [2, 1, 0], 'a card given across keeps its owner through the shuffle, read by its code');
+		assert.deepEqual(across.translate([{ kind: MSG.SHUFFLE_HAND, player: 0, codes: [4, 2] }])[0].nums, [2, 1, 0]);
+		assert.deepEqual(across.translate([{ kind: MSG.SHUFFLE_HAND, player: 1, codes: [1, 4] }])[0].nums, [2, 0, 1]);
+		across.translate([move(1, at(1, LOCATION.HAND, 0, POS.FACEDOWN), at(1, LOCATION.GRAVE, 0, POS.FACEUP), 0x40)]);
+		assert.deepEqual(across.translate([{ kind: MSG.SHUFFLE_HAND, player: 1, codes: [4] }])[0].nums, [1], 'a hand holding only its own cards names no owners');
+		across.translate([move(2, at(0, LOCATION.HAND, 1, POS.FACEDOWN), at(1, LOCATION.HAND, 1, POS.FACEDOWN), 0x40)]);
+		across.translate([move(4, at(0, LOCATION.HAND, 0, POS.FACEDOWN), at(1, LOCATION.HAND, 2, POS.FACEDOWN), 0x40)]);
+		assert.deepEqual(across.board()[1].hand.map((card) => [card.code, card.owner]), [[4, 1], [2, 0], [4, 1]]);
+		assert.deepEqual(across.translate([{ kind: MSG.SHUFFLE_HAND, player: 1, codes: [2, 4, 4] }])[0].nums, [3, 0, 1, 1]);
+		const copies = fresh().translator;
+		copies.translate([
+			{ kind: MSG.DRAW, player: 1, cards: [{ code: 4, position: POS.FACEDOWN }] },
+			move(4, nowhere, at(0, LOCATION.HAND, 0, POS.FACEDOWN), 0),
+			move(4, at(1, LOCATION.HAND, 0, POS.FACEDOWN), at(0, LOCATION.HAND, 1, POS.FACEDOWN), 0x40),
+			{ kind: MSG.DRAW, player: 0, cards: [{ code: 1, position: POS.FACEDOWN }] },
+		]);
+		assert.deepEqual(copies.board()[0].hand.map((card) => [card.code, card.owner]), [[4, 0], [4, 1], [1, 0]]);
+		assert.deepEqual(copies.translate([{ kind: MSG.SHUFFLE_HAND, player: 0, codes: [1, 4, 4] }])[0].nums, [3, 0, 0, 1], 'copies of one code take their owners in the order they lay, since the code is all the message says');
+
 		const extra = fresh().translator;
 		const [summoned, returned] = extra.translate([move(7, at(0, LOCATION.EXTRA, 0, POS.FACEDOWN_DEFENSE), at(0, LOCATION.MZONE, 0), 0x800), move(7, at(0, LOCATION.MZONE, 0), at(0, LOCATION.EXTRA, 0, POS.FACEUP_DEFENSE), 1)]);
 		assert.equal(summoned.verb, VERB.specialAtk, 'the core stamps a Special Summon before the move');
@@ -359,6 +442,10 @@ const played = await (async () => {
 		const reshuffled = extra.translate([{ kind: MSG.SHUFFLE_EXTRA, player: 0, codes: [7] }]);
 		assert.deepEqual(reshuffled.map((row) => [row.t, row.flags]), [[TAG.SHUFFLE, FLAG.FACE_PRESENT], [TAG.FLIP, FLAG.FACE_PRESENT | FLAG.FACE_UP]], 'the face-up Pendulum is turned back up');
 		assert.equal(extra.board()[0].extra[0].position, POS.FACEUP_DEFENSE);
+		assert.deepEqual(reshuffled[0].nums, [1], 'an Extra Deck of its own cards names no owners');
+		const lent = fresh().translator;
+		lent.translate([move(7, at(0, LOCATION.EXTRA, 0, POS.FACEDOWN_DEFENSE), at(1, LOCATION.EXTRA, 0, POS.FACEDOWN_DEFENSE), 0x40)]);
+		assert.deepEqual(lent.translate([{ kind: MSG.SHUFFLE_EXTRA, player: 1, codes: [7] }]), [{ t: TAG.SHUFFLE, actor: 1, to: zoneRef(seatZone(1, ZONE.EXTRA)), nums: [1, 0], flags: FLAG.FACE_PRESENT, cards: [7] }], "a card in the other seat's Extra Deck keeps its owner through the shuffle");
 	}
 
 	{

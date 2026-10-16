@@ -144,9 +144,9 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		throw new Error(`translate: ${what}`);
 	};
 
-	function mint(code, position) {
+	function mint(code, position, owner) {
 		const inst = nextInst++;
-		cards.set(inst, { code, position });
+		cards.set(inst, { code, position, owner });
 		return inst;
 	}
 
@@ -268,18 +268,24 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		const seat = table[player];
 		const count = seat[key].length;
 		if (orderedCodes && orderedCodes.length !== count) fail(`shuffle names ${orderedCodes.length} cards, the ${key} holds ${count}`);
-		const positions = new Map();
+		const retired = new Map();
 		for (const inst of seat[key]) {
-			const { code, position } = cards.get(inst);
-			positions.set(code, [...(positions.get(code) ?? []), position]);
+			const { code, position, owner } = cards.get(inst);
+			retired.set(code, [...(retired.get(code) ?? []), { position, owner }]);
 			retire(inst);
 		}
 		const fresh = [];
 		for (let i = 0; i < count; i++) {
 			const code = orderedCodes ? orderedCodes[i] : 0;
-			fresh.push(mint(code, (code && positions.get(code)?.shift()) || POS.FACEDOWN));
+			const kept = code ? retired.get(code)?.shift() : undefined;
+			fresh.push(mint(code, kept?.position || POS.FACEDOWN, kept?.owner ?? player));
 		}
 		return fresh;
+	}
+
+	function owned(player, fresh) {
+		const owners = fresh.map((inst) => cards.get(inst).owner);
+		return owners.some((owner) => owner !== player) ? owners : [];
 	}
 
 	const silent = () => {};
@@ -303,7 +309,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		[MSG.MOVE]: (m, rows) => {
 			const { from, to } = m;
 			if (from.location === 0) {
-				const inst = mint(m.code, to.position);
+				const inst = mint(m.code, to.position, to.controller);
 				place(inst, to);
 				const zone = zoneAt(to);
 				let flags = landing(zone, to.position);
@@ -400,7 +406,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 			const seat = table[m.player];
 			const fresh = reshuffle(m.player, 'hand', m.codes);
 			seat.hand = fresh;
-			rows.push({ t: TAG.SHUFFLE, actor: m.player, to: zoneRef(seatZone(m.player, ZONE.HAND)), nums: [fresh.length], ...(m.codes.some(Boolean) ? { cards: [...m.codes] } : {}) });
+			rows.push({ t: TAG.SHUFFLE, actor: m.player, to: zoneRef(seatZone(m.player, ZONE.HAND)), nums: [fresh.length, ...owned(m.player, fresh)], ...(m.codes.some(Boolean) ? { cards: [...m.codes] } : {}) });
 			const up = fresh.filter((inst) => positionOf(inst) & POS.FACEUP);
 			if (up.length) rows.push(revealAll(m.player, up));
 		},
@@ -412,7 +418,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 			const first = fresh.length - up.length;
 			up.forEach((position, i) => learn(fresh[first + i], 0, position));
 			const zone = seatZone(m.player, ZONE.EXTRA);
-			rows.push({ t: TAG.SHUFFLE, actor: m.player, to: zoneRef(zone), nums: [fresh.length], flags: FLAG.FACE_PRESENT, ...(m.codes.some(Boolean) ? { cards: [...m.codes] } : {}) });
+			rows.push({ t: TAG.SHUFFLE, actor: m.player, to: zoneRef(zone), nums: [fresh.length, ...owned(m.player, fresh)], flags: FLAG.FACE_PRESENT, ...(m.codes.some(Boolean) ? { cards: [...m.codes] } : {}) });
 			const shown = fresh.slice(first);
 			if (shown.length) rows.push({ t: TAG.FLIP, actor: m.player, insts: shown, cards: shown.map(codeOf), flags: FLAG.FACE_PRESENT | FLAG.FACE_UP, verb: VERB.flipUp });
 		},
@@ -581,10 +587,10 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 			opened = true;
 			const rows = [];
 			loaded.forEach(({ main, extra = [] }, seat) => {
-				const deck = main.map((code) => mint(code, POS.FACEDOWN_DEFENSE));
+				const deck = main.map((code) => mint(code, POS.FACEDOWN_DEFENSE, seat));
 				table[seat].deck = deck.reverse();
 				if (main.length) rows.push({ t: TAG.SETUP, to: zoneRef(seatZone(seat, ZONE.DECK)), cards: main.map(() => 0) });
-				table[seat].extra = extra.map((code) => mint(code, POS.FACEDOWN_DEFENSE));
+				table[seat].extra = extra.map((code) => mint(code, POS.FACEDOWN_DEFENSE, seat));
 				if (extra.length) rows.push({ t: TAG.SETUP, to: zoneRef(seatZone(seat, ZONE.EXTRA)), cards: holds(seat) ? [...extra] : extra.map(() => 0), flags: FLAG.FACE_PRESENT });
 			});
 			return rows;

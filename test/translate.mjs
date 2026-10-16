@@ -485,8 +485,22 @@ end`;
 		assert.deepEqual(translator.board().map((seat) => seat.lp), [8500, 4000]);
 		translator.translate([{ kind: MSG.DRAW, player: 0, cards: [{ code: 1, position: POS.FACEDOWN }] }, move(1, at(0, LOCATION.HAND, 0, POS.FACEDOWN), at(0, LOCATION.MZONE, 4), 0)]);
 		translator.translate([{ kind: MSG.DRAW, player: 1, cards: [{ code: 4, position: POS.FACEDOWN }] }, move(4, at(1, LOCATION.HAND, 0, POS.FACEDOWN), at(1, LOCATION.MZONE, 6, POS.FACEUP_DEFENSE), 0)]);
-		const counters = translator.translate([{ kind: MSG.ADD_COUNTER, counterType: 1, controller: 0, location: LOCATION.MZONE, sequence: 4, count: 2 }, { kind: MSG.REMOVE_COUNTER, counterType: 1, controller: 0, location: LOCATION.MZONE, sequence: 4, count: 1 }]);
-		assert.deepEqual(counters.map((row) => [row.t, row.insts[0], row.nums[0]]), [[TAG.COUNTER, H.top0, 2], [TAG.COUNTER, H.top0, -1]]);
+		const counters = translator.translate([
+			{ kind: MSG.ADD_COUNTER, counterType: 1, controller: 0, location: LOCATION.MZONE, sequence: 4, count: 2 },
+			{ kind: MSG.ADD_COUNTER, counterType: 0x100e, controller: 0, location: LOCATION.MZONE, sequence: 4, count: 1 },
+			{ kind: MSG.REMOVE_COUNTER, counterType: 1, controller: 0, location: LOCATION.MZONE, sequence: 4, count: 1 },
+			{ kind: MSG.ADD_COUNTER, counterType: 0, controller: 0, location: LOCATION.MZONE, sequence: 4, count: 3 },
+		]);
+		assert.deepEqual(
+			counters.map((row) => [row.t, row.insts[0], row.nums]),
+			[
+				[TAG.COUNTER, H.top0, [2, 1]],
+				[TAG.COUNTER, H.top0, [1, 0x100e]],
+				[TAG.COUNTER, H.top0, [-1, 1]],
+				[TAG.COUNTER, H.top0, [3]],
+			],
+			'a counter row carries its kind as the core keys it, and a kind of 0 by leaving it out',
+		);
 		const chaining = translator.translate([{ kind: MSG.CHAINING, code: 1, ...at(0, LOCATION.MZONE, 4), triggeringController: 1, triggeringLocation: LOCATION.MZONE, triggeringSequence: 4, description: (1n << 20n) | 3n, chainCount: 1 }, { kind: MSG.CHAINED, chainCount: 1 }]);
 		assert.deepEqual(
 			chaining,

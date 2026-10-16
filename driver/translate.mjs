@@ -499,8 +499,8 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		[MSG.RECOVER]: (m, rows) => lp(m.player, m.amount, rows),
 		[MSG.LPUPDATE]: (m, rows) => lp(m.player, m.lp - table[m.player].lp, rows),
 
-		[MSG.ADD_COUNTER]: (m, rows) => rows.push({ t: TAG.COUNTER, insts: [at(m)], nums: [m.count], verb: VERB.counter }),
-		[MSG.REMOVE_COUNTER]: (m, rows) => rows.push({ t: TAG.COUNTER, insts: [at(m)], nums: [-m.count], verb: VERB.counter }),
+		[MSG.ADD_COUNTER]: (m, rows) => counter(m, m.count, rows),
+		[MSG.REMOVE_COUNTER]: (m, rows) => counter(m, -m.count, rows),
 
 		[MSG.TOSS_COIN]: (m, rows) => rows.push({ t: TAG.COIN, actor: m.player, nums: [...m.results], verb: VERB.coin }),
 		[MSG.TOSS_DICE]: (m, rows) => rows.push({ t: TAG.DICE, actor: m.player, nums: [...m.results], verb: VERB.dice }),
@@ -573,6 +573,10 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		const inst = at(card);
 		learn(inst, card.code);
 		return inst;
+	}
+
+	function counter(m, delta, rows) {
+		rows.push({ t: TAG.COUNTER, insts: [at(m)], nums: m.counterType === 0 ? [delta] : [delta, m.counterType], verb: VERB.counter });
 	}
 
 	function lp(player, delta, rows) {

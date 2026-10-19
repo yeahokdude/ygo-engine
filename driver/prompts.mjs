@@ -43,6 +43,16 @@ const POSITIONS = [
 
 const placeOf = ({ controller, location, sequence }) => `${controller}/${location}/${sequence}`;
 
+const onePerEffect = (members) => {
+	const seen = new Set();
+	return members.filter((member) => {
+		const key = memberKey(member);
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+};
+
 function onePerCard(cards) {
 	const seen = new Set();
 	return cards.flatMap((card, index) => {
@@ -88,7 +98,7 @@ const RULES = {
 			...m.repositionable.map((card, index) => cardMember(resolve, card, VERB.position, command(IDLE.POS_CHANGE, index))),
 			...m.monsterSettable.map(summonMember(resolve, m.player, VERB.setMonster, IDLE.MONSTER_SET)),
 			...m.spellSettable.map((card, index) => cardMember(resolve, card, VERB.setSpellTrap, command(IDLE.SPELL_SET, index))),
-			...m.activatable.map((effect, index) => effectMember(resolve, effect, command(IDLE.ACTIVATE, index))),
+			...onePerEffect(m.activatable.map((effect, index) => effectMember(resolve, effect, command(IDLE.ACTIVATE, index)))),
 			...(m.toBp ? [phaseMember(m.player, PACK_PHASE.BP, command(IDLE.TO_BP, 0))] : []),
 			...(m.toEp ? [phaseMember(m.player, PACK_PHASE.EP, command(IDLE.TO_EP, 0))] : []),
 			...(m.canShuffle ? [{ subject: seatOf(m.player), verb: VERB.shuffleHand, payload: command(IDLE.SHUFFLE, 0) }] : []),
@@ -98,7 +108,7 @@ const RULES = {
 		family: 'battle',
 		shape: SHAPE.ONE_OF,
 		members: [
-			...m.activatable.map((effect, index) => effectMember(resolve, effect, command(BATTLE.CHAIN, index))),
+			...onePerEffect(m.activatable.map((effect, index) => effectMember(resolve, effect, command(BATTLE.CHAIN, index)))),
 			...m.attackable.map((card, index) => cardMember(resolve, card, VERB.attack, command(BATTLE.BATTLE, index), { direct: card.canDirect })),
 			...(m.toM2 ? [phaseMember(m.player, PACK_PHASE.M2, command(BATTLE.TO_M2, 0))] : []),
 			...(m.toEp ? [phaseMember(m.player, PACK_PHASE.EP, command(BATTLE.TO_EP, 0))] : []),
@@ -210,7 +220,7 @@ const RULES = {
 		ordering: m.specialCount === CHAIN_ORDERING,
 		useful: m.specialCount > 0,
 		timing: m.hintTiming,
-		members: m.chains.map((effect, index) => effectMember(resolve, effect, index)),
+		members: onePerEffect(m.chains.map((effect, index) => effectMember(resolve, effect, index))),
 	}),
 
 	[MSG.ANNOUNCE_RACE]: (m) => declaredBits(m, 'race'),

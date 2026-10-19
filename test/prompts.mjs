@@ -282,7 +282,14 @@ const bytesOf = (kind, response) => Buffer.from(encodeResponse(kind, response)).
 		const forced = translate({ ...chain, forced: true, specialCount: 0x7f });
 		assert.deepEqual([forced.cancelable, forced.ordering], [false, true]);
 		assert.throws(() => responseFor(forced, { shape: SHAPE.TERMINAL, outcome: OUTCOME.DECLINE }), /cannot be walked away from/);
-		assert.throws(() => translate({ ...chain, chains: [link(4, 0, 9n), link(4, 0, 9n)] }), /key the same/);
+		const twice = { ...chain, chains: [link(4, 0, 9n), link(5, 1, 9n), link(4, 0, 9n)] };
+		const { prompt: once } = roundTrip(twice, 1);
+		assert.deepEqual(once.members.map((member) => [member.subject.inst, member.payload]), [[prompt.members[0].subject.inst, 0], [prompt.members[1].subject.inst, 1]], 'an effect the core lists twice is one member, at its first entry');
+		assert.throws(() => replyFor(once, 2), /no member/);
+		const idle = translate({ kind: MSG.SELECT_IDLECMD, player: 0, summonable: [], spSummonable: [], repositionable: [], monsterSettable: [], spellSettable: [], activatable: [link(4, 0, 9n), link(4, 0, 9n)], toBp: false, toEp: false, canShuffle: false });
+		const battle = translate({ kind: MSG.SELECT_BATTLECMD, player: 1, activatable: [link(4, 0, 9n), link(4, 0, 9n)], attackable: [], toM2: false, toEp: false });
+		assert.deepEqual([idle, battle].map((command) => command.members.map((member) => member.payload)), [[5], [0]]);
+		assert.throws(() => translate({ kind: MSG.SELECT_CARD, player: 0, cancelable: false, min: 1, max: 1, cards: [card(1, 0, LOCATION.HAND, 0), card(1, 0, LOCATION.HAND, 0)] }), /key the same/);
 	}
 	{
 		const race = { kind: MSG.ANNOUNCE_RACE, player: 0, count: 2, available: BigInt(RACE.WARRIOR) | BigInt(RACE.DRAGON) | (1n << 62n) };

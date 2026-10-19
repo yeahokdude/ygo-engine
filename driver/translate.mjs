@@ -1,4 +1,4 @@
-import { CHINT, HINT, LOCATION, MSG, MSG_NAME, PHASE, PHINT, POS, QUERY, REASON, STATUS } from './constants.mjs';
+import { CHINT, HINT, LOCATION, MSG, MSG_NAME, PHASE, PHINT, POS, QUERY, REASON, STATUS, TIMING } from './constants.mjs';
 import { DECODED_KINDS, isPrompt } from './messages.mjs';
 import { bitsOf, captionHint, translatePrompt } from './prompts.mjs';
 import { redactQuery } from './redact.mjs';
@@ -21,6 +21,8 @@ const PHASE_OF = {
 	[PHASE.MAIN2]: PACK_PHASE.M2,
 	[PHASE.END]: PACK_PHASE.EP,
 };
+
+const DEALT = TIMING.DRAW | TIMING.TOHAND;
 
 const DESCRIPTION_SHIFT = 20n;
 const DESCRIPTION_MASK = (1n << DESCRIPTION_SHIFT) - 1n;
@@ -139,6 +141,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 	let related = [];
 	const written = new Map();
 	const described = new Map();
+	const dealt = [0, 0];
 
 	const fail = (what) => {
 		throw new Error(`translate: ${what}`);
@@ -326,6 +329,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 
 	const RULES = {
 		[MSG.DRAW]: (m, rows) => {
+			dealt[m.player] = turnPlayer === null ? DEALT : 0;
 			const seat = table[m.player];
 			const insts = m.cards.map(({ code, position }) => {
 				const inst = seat.deck.pop() ?? fail(`player ${m.player} draws from an empty deck`);
@@ -341,6 +345,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 
 		[MSG.MOVE]: (m, rows) => {
 			const { from, to } = m;
+			if (to.location === LOCATION.HAND && from.location !== 0) dealt[from.controller] &= ~TIMING.TOHAND;
 			if (from.location === 0) {
 				const inst = mint(m.code, to.position, to.controller);
 				place(inst, to);
@@ -605,6 +610,12 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 		[MSG.RELOAD_FIELD]: unsupported,
 	};
 
+	function undealt(m) {
+		if (m.kind !== MSG.SELECT_CHAIN) return m;
+		const [mine, theirs] = m.hintTiming;
+		return { ...m, hintTiming: [(mine & ~dealt[m.player]) >>> 0, (theirs & ~dealt[1 - m.player]) >>> 0] };
+	}
+
 	function learnAt(card) {
 		const inst = at(card);
 		learn(inst, card.code);
@@ -655,7 +666,7 @@ export function createTranslator({ seats, startingLP = [8000, 8000], pool = null
 			const hinted = hint;
 			hint = null;
 			consumed = hinted;
-			return translatePrompt(message, { handle: at, zone: zoneOf }, hinted, pool);
+			return translatePrompt(undealt(message), { handle: at, zone: zoneOf }, hinted, pool);
 		},
 
 		again() {

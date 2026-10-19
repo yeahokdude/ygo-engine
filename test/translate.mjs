@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { ATTRIBUTE, CHINT, DUEL, DUEL_STATUS, HINT, LOCATION, MSG, PHASE, PHINT, POS, QUERY, RACE, STATUS, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
+import { ATTRIBUTE, CHINT, DUEL, DUEL_STATUS, HINT, LOCATION, MSG, PHASE, PHINT, POS, QUERY, RACE, STATUS, TIMING, TYPE, advance, clockFromSeed, createEngine, createTranslator, loadDecks, play, pollField, redact, statsOf, vocabulary, zoneOf } from '../driver/index.mjs';
 import { conjure, conjureError, placeOf } from '../driver/conjure.mjs';
 import { unruledKinds } from '../driver/translate.mjs';
 import { CARDS, DECKS, SEED, TEAM, bot, browserEntry, cardReader, stringify } from './vanilla.mjs';
@@ -463,6 +463,27 @@ end`,
 		assert.deepEqual(top, [{ t: TAG.REVEAL, actor: 0, insts: [8], cards: [3], to: audienceRef(AUDIENCE.ALL), verb: VERB.revealTop }]);
 		const drawn = translator.translate([{ kind: MSG.DRAW, player: 0, cards: [{ code: 3, position: POS.FACEUP }] }]);
 		assert.deepEqual(drawn.map((row) => row.t), [TAG.MOVE, TAG.REVEAL], 'a card drawn face-up is public in the hand');
+	}
+
+	{
+		const { translator } = fresh();
+		const DEALT = TIMING.DRAW | TIMING.TOHAND;
+		const timing = (player, mine, theirs) => translator.prompt({ kind: MSG.SELECT_CHAIN, player, specialCount: 0, forced: false, hintTiming: [mine, theirs], chains: [] }).timing;
+		translator.translate([
+			{ kind: MSG.DRAW, player: 0, cards: [{ code: 1, position: POS.FACEDOWN }] },
+			{ kind: MSG.DRAW, player: 1, cards: [{ code: 4, position: POS.FACEDOWN }] },
+			{ kind: MSG.NEW_TURN, player: 0 },
+		]);
+		assert.deepEqual(timing(0, TIMING.DRAW_PHASE, DEALT), [TIMING.DRAW_PHASE, 0], 'the deal raised a draw and a card to the hand in the other seat\'s mask, which no window answers');
+		assert.deepEqual(timing(1, DEALT | TIMING.SSET, TIMING.SSET), [TIMING.SSET, TIMING.SSET], 'nor in the asked seat\'s');
+		translator.translate([move(5, at(1, LOCATION.DECK, 1, POS.FACEDOWN), at(1, LOCATION.HAND, 1, POS.FACEDOWN), 0)]);
+		assert.deepEqual(timing(0, 0, DEALT), [0, TIMING.TOHAND], 'a card added to that seat\'s hand since is an event');
+		translator.translate([{ kind: MSG.DRAW, player: 1, cards: [{ code: 6, position: POS.FACEDOWN }] }]);
+		assert.deepEqual(timing(0, 0, DEALT), [0, DEALT], 'and so is a draw since');
+		assert.deepEqual(timing(1, 0, DEALT), [0, 0], 'a seat that has drawn nothing since keeps its deal left out');
+		translator.translate([move(1, at(0, LOCATION.HAND, 0, POS.FACEDOWN), at(1, LOCATION.HAND, 3, POS.FACEDOWN), 0)]);
+		assert.deepEqual(timing(1, 0, DEALT), [0, TIMING.TOHAND], 'a card leaving a seat\'s control for a hand is that seat\'s event');
+		assert.deepEqual(translator.prompt({ kind: MSG.SELECT_YESNO, player: 0, description: 0n }).timing, undefined, 'only a chain window carries the masks');
 	}
 
 	{

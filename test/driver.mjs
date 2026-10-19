@@ -15,7 +15,8 @@ const HERE = new URL('./', import.meta.url);
 	const constants = await readFile(new URL('../core/ocgapi_constants.h', HERE), 'utf8');
 	const types = await readFile(new URL('../core/ocgapi_types.h', HERE), 'utf8');
 	const common = await readFile(new URL('../core/common.h', HERE), 'utf8');
-	assert.equal(await readFile(new URL('../driver/constants.mjs', HERE), 'utf8'), generate(constants, types, common), 'driver/constants.mjs is stale: node tools/constants.mjs');
+	const field = await readFile(new URL('../core/field.h', HERE), 'utf8');
+	assert.equal(await readFile(new URL('../driver/constants.mjs', HERE), 'utf8'), generate(constants, types, common, field), 'driver/constants.mjs is stale: node tools/constants.mjs');
 	console.log('constants  ok');
 }
 

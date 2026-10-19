@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const HEADER = new URL('../core/ocgapi_constants.h', import.meta.url);
 const TYPES = new URL('../core/ocgapi_types.h', import.meta.url);
 const COMMON = new URL('../core/common.h', import.meta.url);
+const FIELD = new URL('../core/field.h', import.meta.url);
 const OUTPUT = new URL('../driver/constants.mjs', import.meta.url);
 
 const ENUMS = [
@@ -30,6 +31,7 @@ const GROUPS = [
 	['PLAYER_', 'PLAYER'],
 	['PHASE_', 'PHASE'],
 	['DUEL_', 'DUEL'],
+	['TIMING_', 'TIMING'],
 ];
 
 function define(text, values, keep) {
@@ -40,10 +42,11 @@ function define(text, values, keep) {
 	}
 }
 
-export function generate(headerText, typesText, commonText) {
+export function generate(headerText, typesText, commonText, fieldText) {
 	const values = new Map();
 	define(headerText, values, (name) => !name.startsWith('OCG_') && !name.startsWith('OCGAPI_'));
 	define(commonText, values, (name) => name.startsWith('LOCATION_'));
+	define(fieldText, values, (name) => name.startsWith('TIMING_'));
 
 	const sections = GROUPS.map(([prefix, exported]) => {
 		const members = [...values].filter(([name]) => name.startsWith(prefix));
@@ -122,7 +125,7 @@ function evaluate(expression, values) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-	const generated = generate(readFileSync(HEADER, 'utf8'), readFileSync(TYPES, 'utf8'), readFileSync(COMMON, 'utf8'));
+	const generated = generate(readFileSync(HEADER, 'utf8'), readFileSync(TYPES, 'utf8'), readFileSync(COMMON, 'utf8'), readFileSync(FIELD, 'utf8'));
 	if (process.argv.includes('--check')) {
 		let current = '';
 		try {

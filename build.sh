@@ -20,7 +20,7 @@ COMMON=(
 	-Os -g0 --closure 1 -sASSERTIONS=0
 	-sMODULARIZE=1 -sEXPORT_ES6=1
 	-sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=4MB -sMALLOC=emmalloc
-	-fwasm-exceptions -sSUPPORT_LONGJMP=wasm -fno-rtti
+	-fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=1 -sSUPPORT_LONGJMP=wasm -fno-rtti
 	-sNO_EXIT_RUNTIME=1 -sFILESYSTEM=0 -sDYNAMIC_EXECUTION=0
 	-sEXPORTED_FUNCTIONS=_malloc,_free
 	-sINCOMING_MODULE_JS_API=instantiateWasm,locateFile,wasmBinary,print,printErr,onAbort

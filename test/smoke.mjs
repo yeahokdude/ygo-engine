@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 
 const DIST = new URL('../dist/', import.meta.url);
 const EXPECTED_VERSION = [11, 0];
@@ -36,9 +36,13 @@ function version(engine) {
 }
 
 {
-	const manifest = JSON.parse(await readFile(new URL('manifest.json', DIST), 'utf8'));
+	const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 	let modules = 0;
 	for (const [target, files] of Object.entries(manifest.targets)) {
+		const dir = new URL(`${target}/`, DIST);
+		const built = [];
+		for (const name of await readdir(dir, { recursive: true })) if ((await stat(new URL(name, dir))).isFile()) built.push(name);
+		assert.deepEqual(built.sort(), Object.keys(files).sort(), `${target}: the manifest lists every built file`);
 		for (const [name, { sha256, bytes }] of Object.entries(files)) {
 			const data = await readFile(new URL(`${target}/${name}`, DIST));
 			assert.equal(data.length, bytes, `${target}/${name}: bytes`);

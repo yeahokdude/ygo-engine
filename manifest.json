@@ -1,0 +1,111 @@
+{
+	"emscripten": "6.0.9",
+	"core": "b8c05dff14da0b13608950a73906287dc0b601f9",
+	"lua": "75ea9ccbea7c4886f30da147fb67b693b2624c26",
+	"targets": {
+		"browser": {
+			"driver/conjure.mjs": {
+				"sha256": "220bd2b0c1b64b07998c1ed369ad37c19c535c03e13b8b09112b2a2715c9f98c",
+				"bytes": 4787
+			},
+			"driver/constants.mjs": {
+				"sha256": "73266d24331cf8bfc8d20c74d203793b5a14106e1b636687793ec6007ea67eb4",
+				"bytes": 11466
+			},
+			"driver/deal.mjs": {
+				"sha256": "0507c231e1f2c2b639a67f07cd0332ac5a6783aa0818dcfffa40dd7a14a148ab",
+				"bytes": 1429
+			},
+			"driver/declare.mjs": {
+				"sha256": "561e2fe9edde8086a4be0300dbfbf3a086423580a88817937e3571b9f1c75b7a",
+				"bytes": 3395
+			},
+			"driver/duel.mjs": {
+				"sha256": "f688e862187919a4cc43082ac8522f929e304f29893d5d5086682205a7b16d3d",
+				"bytes": 2184
+			},
+			"driver/engine.mjs": {
+				"sha256": "8236e7b2fe954961b1396f4d2fb3c6eadc55571560cfc437de2f44b34b0e9fc7",
+				"bytes": 9037
+			},
+			"driver/index.mjs": {
+				"sha256": "b7f16377097b1cf34199b2cd5d25334d1a6f398c82c0543bf8d76770b9d48327",
+				"bytes": 718
+			},
+			"driver/landings.mjs": {
+				"sha256": "f6e05f06d1c7c7660df66d1ab11f96fe0b4e6f79dc329bc1abfb0dea0e71533c",
+				"bytes": 784
+			},
+			"driver/memory.mjs": {
+				"sha256": "af842dcec2e9417a1861e8fc80e4df14be5e38e1cae72be8fce293773e3196db",
+				"bytes": 2880
+			},
+			"driver/messages.mjs": {
+				"sha256": "c6cd7f9851d1e25a618a992b538401cf4cf733f60804cd62be0da587f0f15bd6",
+				"bytes": 10241
+			},
+			"driver/prompts.mjs": {
+				"sha256": "ad1556b7d180ee203dde9adc24b041e612c7ec2b876f7aa9dd17815bc5ad09bc",
+				"bytes": 17517
+			},
+			"driver/queries.mjs": {
+				"sha256": "392e905d8a94190d60ec6644df749d2ce062c32750cc712a1607ee5a523be447",
+				"bytes": 2932
+			},
+			"driver/redact.mjs": {
+				"sha256": "7e252ae2998224c6c6a5b836c02a08188a1cdc07cb3c854dd4467527c6f91516",
+				"bytes": 4326
+			},
+			"driver/responses.mjs": {
+				"sha256": "3af55bd563c189e9c2c945aa280d23635ddaf5f993a65bd63f98b184f9dd83d5",
+				"bytes": 3280
+			},
+			"driver/translate.mjs": {
+				"sha256": "d00f6edd64e712c3fb70a7cec7ba1c58f9ff2b9914380e1b0b14f23e790bc6f9",
+				"bytes": 31909
+			},
+			"driver/vocabulary.mjs": {
+				"sha256": "54b91fc479e9cefbee11f191a6124b86dc4ee5ce99d9e3aee0c3eb646c5c0910",
+				"bytes": 3306
+			},
+			"host/artifact.mjs": {
+				"sha256": "855ddb7b7bfca185a19a874b43dfbd953d6c6efa6fe20b21a5e072e36a82c15e",
+				"bytes": 2877
+			},
+			"host/session.mjs": {
+				"sha256": "2a81ea05f7960de90d46129390d10585cd72a16442680443fdb97c640e4c91fc",
+				"bytes": 11242
+			},
+			"ocgcore.mjs": {
+				"sha256": "ed2a891ef58764e410f204c7e91169e61e18a2fd3e0761dee7a13bf59d44d3be",
+				"bytes": 5450
+			},
+			"ocgcore.wasm": {
+				"sha256": "3d6639abc3f3842513f3f6f0cfa50439c2cddad25b7faee9057626d1052b03e2",
+				"bytes": 887890
+			},
+			"worker.mjs": {
+				"sha256": "eeb50ef74f9a7ff2e25e029ea54c71e68ce5612f7e165f75929d8c9aebbc6ce6",
+				"bytes": 993
+			}
+		},
+		"workerd": {
+			"index.mjs": {
+				"sha256": "f21acb524e79725d70ef80ce0b8d74bfcfa54a760dfe1c73972023a463351dba",
+				"bytes": 145
+			},
+			"instantiate.mjs": {
+				"sha256": "ff7f2be7f8411707f46b8b5f27bdf905a6a49d061a2056630196f4b4a25b0444",
+				"bytes": 235
+			},
+			"ocgcore.mjs": {
+				"sha256": "cd8423219a975034d071754e236e5fa62382d75c5935ccae61dcb34b181c1005",
+				"bytes": 5237
+			},
+			"ocgcore.wasm": {
+				"sha256": "3d6639abc3f3842513f3f6f0cfa50439c2cddad25b7faee9057626d1052b03e2",
+				"bytes": 887890
+			}
+		}
+	}
+}

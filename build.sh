@@ -59,8 +59,8 @@ const file = (path) => {
 const files = (dir) => readdirSync(dir, { recursive: true }).filter((f) => statSync(`${dir}/${f}`).isFile()).sort();
 const target = (name) => Object.fromEntries(files(`dist/${name}`).map((f) => [f, file(`dist/${name}/${f}`)]));
 const manifest = { emscripten, core, lua, targets: { browser: target('browser'), workerd: target('workerd') } };
-writeFileSync('dist/manifest.json', JSON.stringify(manifest, null, '\t') + '\n');
+writeFileSync('manifest.json', JSON.stringify(manifest, null, '\t') + '\n');
 console.log(JSON.stringify(manifest, null, 2));
 JS
 
-if [ -n "${CHOWN_TO:-}" ]; then chown -R "$CHOWN_TO" dist; fi
+if [ -n "${CHOWN_TO:-}" ]; then chown -R "$CHOWN_TO" dist manifest.json; fi
